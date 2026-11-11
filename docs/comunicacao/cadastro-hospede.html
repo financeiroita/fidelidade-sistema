@@ -95,9 +95,12 @@ button.again{margin-top:20px;background:none;border:1px solid var(--line);color:
           <label class="f" for="phone">Celular / WhatsApp *
             <input id="phone" type="tel" autocomplete="tel" placeholder="(12) 90000-0000" required>
             <span class="err" id="e-phone"></span></label>
-          <label class="f" for="doc">CPF ou passaporte <span class="opt">(opcional)</span>
-            <input id="doc" type="text" autocomplete="off">
-            <span class="help">Ajuda a reconhecer suas estadias automaticamente.</span></label>
+          <label class="f" for="doc"><span id="doc-label">CPF *</span>
+            <input id="doc" type="text" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" required>
+            <span class="help">Usamos para reconhecer suas estadias e creditar seus pontos.</span>
+            <span class="err" id="e-doc"></span></label>
+          <label class="chk full" for="foreign" style="margin-top:0"><input id="foreign" type="checkbox">
+            <span>Sou estrangeiro(a) e não tenho CPF (informar passaporte)</span></label>
           <label class="f" for="birth">Data de nascimento *
             <input id="birth" type="date" autocomplete="bday" required>
             <span class="help">Para o presente de aniversário.</span>
@@ -170,10 +173,36 @@ button.again{margin-top:20px;background:none;border:1px solid var(--line);color:
     var e=$('e-'+id); if(e) e.textContent=msg||'';
     if(field) field.setAttribute('aria-invalid', msg?'true':'false');
   }
+  function validCpf(v){
+    var d=v.replace(/\D/g,'');
+    if(d.length!==11||/^(\d)\1{10}$/.test(d)) return false;
+    for(var t=9;t<11;t++){
+      var s=0; for(var i=0;i<t;i++) s+=parseInt(d[i])*(t+1-i);
+      var r=(s*10)%11%10; if(r!==parseInt(d[t])) return false;
+    }
+    return true;
+  }
+  $('doc').addEventListener('input',function(){
+    if($('foreign').checked) return;
+    var d=this.value.replace(/\D/g,'').slice(0,11), o=d;
+    if(d.length>9) o=d.slice(0,3)+'.'+d.slice(3,6)+'.'+d.slice(6,9)+'-'+d.slice(9);
+    else if(d.length>6) o=d.slice(0,3)+'.'+d.slice(3,6)+'.'+d.slice(6);
+    else if(d.length>3) o=d.slice(0,3)+'.'+d.slice(3);
+    this.value=o;
+  });
+  $('foreign').addEventListener('change',function(){
+    $('doc-label').textContent=this.checked?'Passaporte *':'CPF *';
+    $('doc').placeholder=this.checked?'Número do passaporte':'000.000.000-00';
+    $('doc').inputMode=this.checked?'text':'numeric';
+    $('doc').value=''; setErr('doc',$('doc'),'');
+  });
   function validate(){
     var ok=true, first=null;
     function bad(id,msg){setErr(id,$(id==='terms'?'terms':id),msg); if(!first) first=$(id); ok=false;}
-    ['name','email','phone','birth','terms'].forEach(function(i){setErr(i,$(i),'')});
+    ['name','email','phone','doc','birth','terms'].forEach(function(i){setErr(i,$(i),'')});
+    var dv=$('doc').value.trim();
+    if($('foreign').checked){ if(dv.replace(/\s/g,'').length<5) bad('doc','Informe o número do passaporte.'); }
+    else if(!validCpf(dv)) bad('doc','Informe um CPF válido.');
     if($('name').value.trim().split(/\s+/).length<2) bad('name','Informe nome e sobrenome.');
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($('email').value.trim())) bad('email','Informe um e-mail válido.');
     if($('phone').value.replace(/\D/g,'').length<10) bad('phone','Informe DDD e número.');

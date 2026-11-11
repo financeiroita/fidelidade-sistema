@@ -8,3 +8,4 @@ Memória do projeto. Para alterar uma decisão: crie novo ADR e marque o antigo 
 | [0002](0002-stack-typescript-postgresql.md) | Stack: TypeScript + PostgreSQL | Aceita |
 | [0003](0003-regras-de-pontos.md) | Regras de pontos, níveis e expiração | Proposta |
 | [0004](0004-pms-erbon-e-elegibilidade.md) | PMS Erbon, elegibilidade e calibragem | Aceita |
+| [0005](0005-cpf-obrigatorio.md) | CPF obrigatório no cadastro | Aceita |
