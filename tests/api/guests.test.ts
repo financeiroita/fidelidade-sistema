@@ -121,9 +121,9 @@ describe('POST /guests', () => {
     let calls = 0;
     const flaky = new InMemoryGuestRepository();
     const real = flaky.create.bind(flaky);
-    flaky.create = async (g, c) => {
+    flaky.create = async (g) => {
       if (calls++ === 0) throw new ReferralCodeCollisionError();
-      return real(g, c);
+      return real(g);
     };
     const a = buildApp({ repo: flaky, documentSecret: SECRET });
     const res = await a.inject({ method: 'POST', url: '/guests', payload: valid });
