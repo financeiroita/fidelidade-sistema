@@ -1,0 +1,200 @@
+<title>Cadastro no Programa</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout: coluna de benefícios escura ao lado do formulário; empilha no celular. */
+:root{
+  --bg:#F5F8F7; --surface:#FFFFFF; --fg:#10272B; --muted:#4F6568; --line:#C5D5D2;
+  --deep:#0C3A41; --deep-fg:#EAF4F2; --accent:#C9791B; --accent-fg:#FFFFFF; --soft:#E3EFEC; --err:#B3261E; --ok:#1F7A4D;
+  --display:'Fraunces',Georgia,serif; --body:'Inter',system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0B1A1D; --surface:#12292D; --fg:#E6F0EE; --muted:#9DB4B6; --line:#2C4B49;
+  --deep:#0A2D33; --accent:#E8A04A; --accent-fg:#1A1206; --soft:#17353A; --err:#FF8A80; --ok:#6FD3A0; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0B1A1D; --surface:#12292D; --fg:#E6F0EE; --muted:#9DB4B6; --line:#2C4B49;
+  --deep:#0A2D33; --accent:#E8A04A; --accent-fg:#1A1206; --soft:#17353A; --err:#FF8A80; --ok:#6FD3A0; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:16px/1.55 var(--body);margin:0}
+h1,h2,h3{font-family:var(--display);line-height:1.15;margin:0;text-wrap:balance}
+p{margin:0}
+.draft{background:var(--accent);color:var(--accent-fg);font-size:.85rem;text-align:center;padding:8px max(16px,env(safe-area-inset-left,0px))}
+.page{max-width:1020px;margin:0 auto;padding-block:40px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:0;align-items:stretch}
+aside{background:var(--deep);color:var(--deep-fg);padding:36px 28px;border-radius:12px 0 0 12px;display:grid;align-content:start;gap:20px}
+.eyebrow{font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;font-weight:600;color:#F0B766}
+aside h1{font-size:clamp(1.8rem,3.5vw,2.4rem)}
+aside ul{list-style:none;margin:0;padding:0;display:grid;gap:14px}
+aside li{display:grid;grid-template-columns:auto 1fr;gap:12px;font-size:.95rem;color:color-mix(in srgb,var(--deep-fg) 88%,transparent)}
+aside li b{font-family:var(--display);color:#F0B766;font-size:1.3rem;line-height:1.1;min-width:3.2rem}
+.free{font-size:.85rem;color:color-mix(in srgb,var(--deep-fg) 70%,transparent);border-top:1px solid color-mix(in srgb,var(--deep-fg) 20%,transparent);padding-top:14px}
+main{background:var(--surface);border:1px solid var(--line);border-left:0;border-radius:0 12px 12px 0;padding:32px 28px;min-width:0}
+main h2{font-size:1.6rem}
+main .sub{color:var(--muted);margin-top:6px;font-size:.95rem}
+fieldset{border:0;margin:26px 0 0;padding:0;min-width:0}
+legend{font-family:var(--display);font-weight:700;font-size:1.1rem;padding:0;margin-bottom:12px}
+.row{display:grid;gap:14px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.row .full{grid-column:1/-1}
+label.f{display:grid;gap:5px;font-size:.88rem;font-weight:600;min-width:0}
+label.f .opt{font-weight:400;color:var(--muted)}
+input[type=text],input[type=email],input[type=tel],input[type=date],select{font:inherit;font-weight:400;padding:11px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);width:100%;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible,.chk input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.help{font-size:.8rem;color:var(--muted);font-weight:400}
+.err{font-size:.8rem;color:var(--err);font-weight:500;min-height:0}
+input[aria-invalid=true],select[aria-invalid=true]{border-color:var(--err)}
+.chk{display:grid;grid-template-columns:auto 1fr;gap:10px;font-size:.9rem;align-items:start;margin-top:12px}
+.chk input{margin-top:4px;width:18px;height:18px;accent-color:var(--accent)}
+.chk span{color:var(--muted)}
+.chk strong{color:var(--fg);font-weight:600}
+button.submit{margin-top:24px;width:100%;background:var(--accent);color:var(--accent-fg);font:inherit;font-weight:600;border:0;border-radius:6px;padding:14px 20px;cursor:pointer}
+.lgpd{font-size:.8rem;color:var(--muted);margin-top:14px}
+.done{display:none;text-align:left}
+.done.show{display:block}
+.done .card{background:var(--soft);border-radius:10px;padding:20px;margin-top:20px}
+.done .code{font-family:var(--display);font-size:1.8rem;font-weight:700;color:var(--accent);letter-spacing:.04em}
+.done h2{color:var(--ok)}
+button.again{margin-top:20px;background:none;border:1px solid var(--line);color:var(--fg);font:inherit;font-weight:500;padding:10px 16px;border-radius:6px;cursor:pointer}
+@media (max-width:760px){
+  .page{grid-template-columns:1fr;padding-block:20px 40px}
+  aside{border-radius:12px 12px 0 0;padding:28px 22px}
+  main{border-left:1px solid var(--line);border-top:0;border-radius:0 0 12px 12px;padding:26px 20px}
+  .row{grid-template-columns:1fr}
+}
+</style>
+
+<div class="draft">Demonstração do cadastro. Nada é enviado ou salvo nesta página.</div>
+
+<div class="page">
+  <aside>
+    <span class="eyebrow">Programa de fidelidade</span>
+    <h1>Entre para o programa e comece a ganhar já na próxima estadia.</h1>
+    <ul>
+      <li><b>1 pt</b><span>a cada R$ 1 em diárias, restaurante e spa</span></li>
+      <li><b>+20%</b><span>de pontos extras ao reservar direto com o hotel</span></li>
+      <li><b>500</b><span>pontos de presente no mês do seu aniversário</span></li>
+      <li><b>1.000</b><span>pontos quando um amigo indicado se hospeda</span></li>
+    </ul>
+    <p class="free">Cadastro gratuito. Seus pontos valem 24 meses e avisamos antes de vencerem.</p>
+  </aside>
+
+  <main>
+    <form id="signup" novalidate>
+      <h2>Seu cadastro</h2>
+      <p class="sub">Leva cerca de dois minutos. Campos com * são obrigatórios.</p>
+
+      <fieldset>
+        <legend>Quem é você</legend>
+        <div class="row">
+          <label class="f full" for="name">Nome completo *
+            <input id="name" type="text" autocomplete="name" required>
+            <span class="err" id="e-name"></span></label>
+          <label class="f" for="email">E-mail *
+            <input id="email" type="email" autocomplete="email" required>
+            <span class="err" id="e-email"></span></label>
+          <label class="f" for="phone">Celular / WhatsApp *
+            <input id="phone" type="tel" autocomplete="tel" placeholder="(12) 90000-0000" required>
+            <span class="err" id="e-phone"></span></label>
+          <label class="f" for="doc">CPF ou passaporte <span class="opt">(opcional)</span>
+            <input id="doc" type="text" autocomplete="off">
+            <span class="help">Ajuda a reconhecer suas estadias automaticamente.</span></label>
+          <label class="f" for="birth">Data de nascimento *
+            <input id="birth" type="date" autocomplete="bday" required>
+            <span class="help">Para o presente de aniversário.</span>
+            <span class="err" id="e-birth"></span></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>De onde você vem</legend>
+        <div class="row">
+          <label class="f" for="city">Cidade
+            <input id="city" type="text" autocomplete="address-level2"></label>
+          <label class="f" for="state">Estado / país
+            <input id="state" type="text" autocomplete="address-level1"></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Para nos conhecermos melhor <span class="opt help">(opcional)</span></legend>
+        <div class="row">
+          <label class="f" for="profile">Como costuma viajar
+            <select id="profile">
+              <option value="">Prefiro não informar</option>
+              <option>Em casal</option><option>Em família com crianças</option>
+              <option>Com amigos</option><option>Sozinho(a)</option><option>A trabalho</option>
+            </select></label>
+          <label class="f" for="source">Como conheceu o hotel
+            <select id="source">
+              <option value="">Prefiro não informar</option>
+              <option>Indicação de amigo</option><option>Instagram / redes sociais</option>
+              <option>Google</option><option>Agência online</option><option>Já me hospedei antes</option>
+            </select></label>
+          <label class="f full" for="ref">Código de indicação <span class="opt">(se um amigo indicou)</span>
+            <input id="ref" type="text" placeholder="Ex.: ANA-4F7K" autocomplete="off"></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Autorizações</legend>
+        <label class="chk" for="terms"><input id="terms" type="checkbox" required>
+          <span><strong>Li e aceito o regulamento do programa *</strong> e o tratamento dos meus dados para participar dele, conforme a LGPD.</span></label>
+        <span class="err" id="e-terms"></span>
+        <label class="chk" for="mkt"><input id="mkt" type="checkbox">
+          <span><strong>Quero receber ofertas e novidades</strong> por e-mail e WhatsApp. Posso cancelar quando quiser.</span></label>
+      </fieldset>
+
+      <button class="submit" type="submit">Quero participar</button>
+      <p class="lgpd">Usamos seus dados apenas para o programa e para as comunicações que você autorizar. Você pode pedir acesso, correção ou exclusão a qualquer momento em [contato do hotel].</p>
+    </form>
+
+    <div class="done" id="done" role="status" tabindex="-1">
+      <h2>Bem-vindo(a) ao programa!</h2>
+      <p class="sub">Cadastro recebido. Enviamos a confirmação para <strong id="d-mail"></strong>.</p>
+      <div class="card">
+        <p class="help">Seu código de indicação (exemplo)</p>
+        <p class="code" id="d-code"></p>
+        <p class="help" style="margin-top:8px">Compartilhe com amigos: quando eles se hospedarem, você ganha 1.000 pontos.</p>
+      </div>
+      <p class="sub" style="margin-top:16px">Nível inicial: <strong>Bronze</strong>. Seus pontos entram automaticamente após o check-out.</p>
+      <button class="again" id="again" type="button">Voltar ao formulário</button>
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var form=$('signup'), done=$('done');
+  function setErr(id,field,msg){
+    var e=$('e-'+id); if(e) e.textContent=msg||'';
+    if(field) field.setAttribute('aria-invalid', msg?'true':'false');
+  }
+  function validate(){
+    var ok=true, first=null;
+    function bad(id,msg){setErr(id,$(id==='terms'?'terms':id),msg); if(!first) first=$(id); ok=false;}
+    ['name','email','phone','birth','terms'].forEach(function(i){setErr(i,$(i),'')});
+    if($('name').value.trim().split(/\s+/).length<2) bad('name','Informe nome e sobrenome.');
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($('email').value.trim())) bad('email','Informe um e-mail válido.');
+    if($('phone').value.replace(/\D/g,'').length<10) bad('phone','Informe DDD e número.');
+    var b=$('birth').value;
+    if(!b || new Date(b)>new Date()) bad('birth','Informe sua data de nascimento.');
+    if(!$('terms').checked) bad('terms','É preciso aceitar o regulamento para participar.');
+    if(first) first.focus();
+    return ok;
+  }
+  form.addEventListener('submit',function(ev){
+    ev.preventDefault();
+    if(!validate()) return;
+    var first=$('name').value.trim().split(/\s+/)[0].toUpperCase().replace(/[^A-Z]/g,'').slice(0,4);
+    var chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789', suf='';
+    for(var i=0;i<4;i++) suf+=chars[Math.floor(Math.random()*chars.length)];
+    $('d-code').textContent=(first||'HOSP')+'-'+suf;
+    $('d-mail').textContent=$('email').value.trim();
+    form.hidden=true; done.classList.add('show'); done.focus();
+  });
+  $('again').addEventListener('click',function(){
+    form.reset(); form.hidden=false; done.classList.remove('show'); $('name').focus();
+  });
+})();
+</script>
