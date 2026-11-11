@@ -20,7 +20,7 @@ export const signupSchema = z
     phone: z
       .string()
       .transform(onlyDigits)
-      .refine((v) => v.length >= 10 && v.length <= 15, 'Telefone inválido.'),
+      .refine((v) => v.length >= 10 && v.length <= 15 && !/^(\d)\1+$/.test(v), 'Telefone inválido.'),
     documentType: z.enum(['CPF', 'PASSPORT']),
     document: z.string().trim().min(5).max(30),
     birthDate: z
@@ -28,7 +28,8 @@ export const signupSchema = z
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use o formato AAAA-MM-DD.')
       .refine((v) => {
         const d = new Date(`${v}T00:00:00Z`);
-        return !Number.isNaN(d.getTime()) && d <= new Date() && d.getUTCFullYear() >= 1900;
+        // Compara de volta com o texto: 1990-02-31 viraria 03/03 sem este teste.
+        return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v && d <= new Date() && d.getUTCFullYear() >= 1900;
       }, 'Data de nascimento inválida.'),
     city: optionalText,
     state: optionalText,
@@ -47,6 +48,9 @@ export const signupSchema = z
   .superRefine((v, ctx) => {
     if (v.documentType === 'CPF' && !isValidCpf(v.document)) {
       ctx.addIssue({ code: 'custom', path: ['document'], message: 'CPF inválido.' });
+    }
+    if (v.documentType === 'PASSPORT' && !/^[A-Za-z0-9 -]{5,20}$/.test(v.document)) {
+      ctx.addIssue({ code: 'custom', path: ['document'], message: 'Passaporte inválido.' });
     }
   });
 

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/api/app';
+import { ReferralCodeCollisionError } from '../../src/application/ports';
 import { isValidCpf } from '../../src/domain/guests/cpf';
 import { InMemoryGuestRepository } from '../../src/infra/memory/guestRepository';
 
@@ -92,6 +93,43 @@ describe('POST /guests', () => {
     const res = await post({ ...valid, referralCode: 'NAO-EXST' });
     expect(res.statusCode).toBe(201);
     expect(res.json().welcomePoints).toBe(0);
+  });
+
+  it('recusa data impossível, futura e telefone inválido', async () => {
+    for (const patch of [
+      { birthDate: '1990-02-31' },
+      { birthDate: '2999-01-01' },
+      { phone: '0000000000' },
+      { phone: '123' },
+    ]) {
+      expect((await post({ ...valid, ...patch })).statusCode).toBe(422);
+    }
+  });
+
+  it('passaporte com formatos diferentes é o mesmo documento', async () => {
+    const p = { ...valid, documentType: 'PASSPORT' };
+    expect((await post({ ...p, document: 'AB-123456' })).statusCode).toBe(201);
+    expect((await post({ ...p, email: 'z@x.com', document: 'ab 123456' })).statusCode).toBe(409);
+    expect((await post({ ...p, email: 'y@x.com', document: '<script>' })).statusCode).toBe(422);
+  });
+
+  it('dois cadastros simultâneos com o mesmo CPF: um 201 e um 409', async () => {
+    const [a, b] = await Promise.all([post(valid), post({ ...valid, email: 'outro@x.com' })]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([201, 409]);
+  });
+
+  it('colisão do código de indicação tenta de novo e não vira 409', async () => {
+    let calls = 0;
+    const flaky = new InMemoryGuestRepository();
+    const real = flaky.create.bind(flaky);
+    flaky.create = async (g, c) => {
+      if (calls++ === 0) throw new ReferralCodeCollisionError();
+      return real(g, c);
+    };
+    const a = buildApp({ repo: flaky, documentSecret: SECRET });
+    const res = await a.inject({ method: 'POST', url: '/guests', payload: valid });
+    expect(res.statusCode).toBe(201);
+    expect(calls).toBe(2);
   });
 
   it('GET /health', async () => {

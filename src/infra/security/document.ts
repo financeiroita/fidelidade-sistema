@@ -5,7 +5,7 @@ export type DocumentType = 'CPF' | 'PASSPORT';
 
 /** Normaliza para comparação: CPF só dígitos; passaporte em maiúsculas sem espaços. */
 export function normalizeDocument(value: string, type: DocumentType): string {
-  return type === 'CPF' ? onlyDigits(value) : value.replace(/\s+/g, '').toUpperCase();
+  return type === 'CPF' ? onlyDigits(value) : value.replace(/[\s-]+/g, '').toUpperCase();
 }
 
 /**

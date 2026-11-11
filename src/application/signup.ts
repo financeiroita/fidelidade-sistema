@@ -3,7 +3,7 @@ import { loyaltyConfig, type LoyaltyConfig } from '../config/loyalty';
 import { expirationDate } from '../domain/points/expiry';
 import type { SignupInput } from '../domain/guests/signup';
 import { documentLast4, hashDocument } from '../infra/security/document';
-import { DuplicateGuestError, type GuestRepository, type NewCredit } from './ports';
+import { DuplicateGuestError, ReferralCodeCollisionError, type GuestRepository, type NewCredit } from './ports';
 
 export interface SignupDeps {
   repo: GuestRepository;
@@ -60,9 +60,7 @@ export async function signupGuest(deps: SignupDeps, input: SignupInput): Promise
       }
     : undefined;
 
-  const referralCode = await generateReferralCode(repo, input.fullName);
-  await repo.create(
-    {
+  const guestData = (referralCode: string) => ({
       id,
       fullName: input.fullName,
       email: input.email,
@@ -79,9 +77,16 @@ export async function signupGuest(deps: SignupDeps, input: SignupInput): Promise
       consentAt: now,
       referralCode,
       referredById: referrer?.id,
-    },
-    welcome,
-  );
+  });
 
-  return { id, referralCode, tier: cfg.tiers[0].name, welcomePoints };
+  // Duas inscrições simultâneas podem sortear o mesmo código: tenta de novo com outro.
+  for (let attempt = 0; ; attempt++) {
+    const referralCode = await generateReferralCode(repo, input.fullName);
+    try {
+      await repo.create(guestData(referralCode), welcome);
+      return { id, referralCode, tier: cfg.tiers[0].name, welcomePoints };
+    } catch (e) {
+      if (!(e instanceof ReferralCodeCollisionError) || attempt >= 4) throw e;
+    }
+  }
 }

@@ -29,6 +29,8 @@ export interface NewCredit {
 }
 
 export class DuplicateGuestError extends Error {}
+/** Conflito apenas no código de indicação; o cadastro pode tentar de novo com outro código. */
+export class ReferralCodeCollisionError extends Error {}
 
 export interface GuestRepository {
   findByDocumentHash(hash: string): Promise<{ id: string } | null>;

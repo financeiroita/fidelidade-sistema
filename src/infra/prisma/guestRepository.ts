@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
-import { DuplicateGuestError, type GuestRepository, type NewCredit, type NewGuest } from '../../application/ports';
+import { DuplicateGuestError, ReferralCodeCollisionError, type GuestRepository, type NewCredit, type NewGuest } from '../../application/ports';
 
 export class PrismaGuestRepository implements GuestRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -52,7 +52,11 @@ export class PrismaGuestRepository implements GuestRepository {
       });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        throw new DuplicateGuestError('Já existe um cadastro com estes dados.');
+        const target = String(e.meta?.target ?? '');
+        if (target.includes('referralCode')) throw new ReferralCodeCollisionError();
+        if (target.includes('document') || target.includes('email')) {
+          throw new DuplicateGuestError('Já existe um cadastro com estes dados.');
+        }
       }
       throw e;
     }

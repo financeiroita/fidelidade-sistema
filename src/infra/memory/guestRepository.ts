@@ -1,4 +1,4 @@
-import { DuplicateGuestError, type GuestRepository, type NewCredit, type NewGuest } from '../../application/ports';
+import { DuplicateGuestError, ReferralCodeCollisionError, type GuestRepository, type NewCredit, type NewGuest } from '../../application/ports';
 
 /** Implementação em memória, usada nos testes. */
 export class InMemoryGuestRepository implements GuestRepository {
@@ -18,6 +18,7 @@ export class InMemoryGuestRepository implements GuestRepository {
     if (this.guests.some((g) => g.documentHash === guest.documentHash || g.email === guest.email)) {
       throw new DuplicateGuestError('duplicado');
     }
+    if (this.guests.some((g) => g.referralCode === guest.referralCode)) throw new ReferralCodeCollisionError();
     this.guests.push(guest);
     if (welcomeCredit) this.credits.push({ ...welcomeCredit, guestId: guest.id });
   }
