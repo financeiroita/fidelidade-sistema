@@ -1,5 +1,6 @@
-import { Prisma, type PrismaClient } from '@prisma/client';
+import { Prisma, type BookingChannel, type PrismaClient } from '@prisma/client';
 import {
+  DuplicateStayError,
   GuestNotFoundError,
   StayAlreadyProcessedError,
   type CheckoutCommit,
@@ -13,13 +14,22 @@ export class PrismaStayRepository implements StayRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async createStay(s: NewStay): Promise<void> {
+    // Sem identificador externo, o mesmo hóspede com as mesmas datas conta como lançamento repetido.
+    if (!s.externalRef) {
+      const dup = await this.prisma.stay.findFirst({
+        where: { guestId: s.guestId, checkIn: s.checkIn, checkOut: s.checkOut, pmsReservationId: null },
+        select: { id: true },
+      });
+      if (dup) throw new DuplicateStayError();
+    }
     try {
       await this.prisma.stay.create({
         data: {
           id: s.id,
           guestId: s.guestId,
           source: 'MANUAL',
-          channel: s.channel as never,
+          pmsReservationId: s.externalRef ? `manual:${s.externalRef}` : undefined,
+          channel: s.channel as BookingChannel,
           status: 'CHECKED_IN',
           checkIn: s.checkIn,
           checkOut: s.checkOut,
@@ -34,8 +44,10 @@ export class PrismaStayRepository implements StayRepository {
         },
       });
     } catch (e) {
-      // Chave estrangeira: hóspede inexistente.
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2003') throw new GuestNotFoundError();
+      if (e instanceof Prisma.PrismaClientKnownRequestError) {
+        if (e.code === 'P2003') throw new GuestNotFoundError(); // chave estrangeira: hóspede inexistente
+        if (e.code === 'P2002') throw new DuplicateStayError(); // identificador externo repetido
+      }
       throw e;
     }
   }
@@ -55,6 +67,7 @@ export class PrismaStayRepository implements StayRepository {
         guestId: s.guestId,
         status: s.status as StayStatus,
         isDirect: s.isDirect,
+        checkOut: s.checkOut,
         pointsProcessedAt: s.pointsProcessedAt,
       },
       charges: s.charges.map((c) => ({ category: c.category, amount: Number(c.amount) })),
@@ -79,6 +92,9 @@ export class PrismaStayRepository implements StayRepository {
   async commitCheckout(c: CheckoutCommit): Promise<void> {
     try {
       await this.prisma.$transaction(async (tx) => {
+        // Trava o hóspede: check-outs simultâneos do mesmo hóspede passam a ser um de cada vez.
+        await tx.$queryRaw`SELECT id FROM "Guest" WHERE id = ${c.guestId} FOR UPDATE`;
+
         // Só um processamento vence: a condição pointsProcessedAt = null é checada no próprio UPDATE.
         const claimed = await tx.stay.updateMany({
           where: { id: c.stayId, pointsProcessedAt: null },
@@ -101,18 +117,26 @@ export class PrismaStayRepository implements StayRepository {
             })),
           });
         }
-        await tx.guest.update({
+
+        // Nível nunca regride por causa de outro check-out concorrente (lido sob a trava).
+        const current = await tx.guest.findUnique({
           where: { id: c.guestId },
-          data: {
-            ...(c.newTierRank !== undefined
-              ? { tier: { connect: { rank: c.newTierRank } }, tierValidUntil: c.tierValidUntil }
-              : {}),
-            ...(c.clearWelcomePending ? { welcomeBonusPending: 0 } : {}),
-          },
+          select: { tier: { select: { rank: true } } },
         });
+        const data: Prisma.GuestUpdateInput = {};
+        if (c.newTierRank !== undefined) {
+          if (current && c.newTierRank > current.tier.rank) {
+            data.tier = { connect: { rank: c.newTierRank } };
+            data.tierValidUntil = c.tierValidUntil;
+          }
+        } else if (c.tierValidUntil) {
+          data.tierValidUntil = c.tierValidUntil;
+        }
+        if (c.clearWelcomePending) data.welcomeBonusPending = 0;
+        if (Object.keys(data).length > 0) await tx.guest.update({ where: { id: c.guestId }, data });
       });
     } catch (e) {
-      // Chave de idempotência repetida: o mesmo crédito já foi gravado por outro processamento.
+      // Chave de idempotência repetida: outro processamento gravou antes. O chamador recarrega e recalcula.
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new StayAlreadyProcessedError();
       }

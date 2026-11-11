@@ -18,3 +18,19 @@
 - A chave interna é única e compartilhada; sem usuários individuais nem registro de quem lançou. Avaliar autenticação por usuário antes de dar acesso à recepção.
 - Rotina noturna: expiração de pontos, rebaixamento de nível e aviso de vencimento ainda não existem.
 - Importação automática do Erbon continua pendente (levantar a API).
+
+## Auditoria de 2026-11-11
+Corrigido:
+- Check-outs simultâneos de estadias diferentes do mesmo hóspede: o hóspede é travado na transação (`FOR UPDATE`), e se o crédito perder a corrida o sistema recarrega os dados e recalcula (até 3 tentativas), em vez de responder "já processado" sem ter creditado.
+- Lançamento duplicado: `externalRef` opcional (identificador único do lançamento); sem ele, o mesmo hóspede com as mesmas datas é recusado (409).
+- Check-out de estadia futura é recusado; datas limitadas a 5 anos atrás e 1 ano à frente.
+- Valores com no máximo 2 casas; teto de R$ 200.000 por linha, R$ 500.000 por estadia e 100 linhas; soma em centavos inteiros (sem perder ponto por ponto flutuante).
+- Nível não regride por check-out concorrente; manter o nível renova a validade (`tierValidUntil`).
+- Chaves secretas exigem variedade de caracteres; logs de erro não incluem mensagens do banco; `id` do check-out é validado.
+
+Decisões do hotel em aberto:
+1. **Pontos qualificáveis com ou sem multiplicador?** Hoje o Diamante conta 2x para subir (cálculo sobre pontos já multiplicados). Programas costumam qualificar pelo valor base. Muda a velocidade de subida de nível (ADR 0003).
+2. **Estorno depois do check-out:** hoje só se compensa estorno lançado antes do check-out e na mesma categoria. Falta rota de estorno que reduza os pontos já creditados (tipo REVERSAL).
+3. **Nível vencido:** até existir a rotina noturna, um nível sem atividade continua valendo.
+
+Segurança ainda pendente: usuário individual por funcionário e registro de quem lançou (`createdBy`); limite de requisições nas rotas internas; restringir essas rotas por rede/IP.

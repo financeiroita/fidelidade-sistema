@@ -1,4 +1,5 @@
 import {
+  DuplicateStayError,
   GuestNotFoundError,
   StayAlreadyProcessedError,
   type CheckoutCommit,
@@ -25,6 +26,17 @@ export class InMemoryStayRepository implements StayRepository {
 
   async createStay(stay: NewStay) {
     if (!this.guests.guests.some((g) => g.id === stay.guestId)) throw new GuestNotFoundError();
+    const others = [...this.stays.values()];
+    const dup = stay.externalRef
+      ? others.some((o) => o.externalRef === stay.externalRef)
+      : others.some(
+          (o) =>
+            !o.externalRef &&
+            o.guestId === stay.guestId &&
+            o.checkIn.getTime() === stay.checkIn.getTime() &&
+            o.checkOut.getTime() === stay.checkOut.getTime(),
+        );
+    if (dup) throw new DuplicateStayError();
     this.stays.set(stay.id, { ...stay, status: 'CHECKED_IN', pointsProcessedAt: null });
   }
 
@@ -33,7 +45,14 @@ export class InMemoryStayRepository implements StayRepository {
     const g = s && this.guests.guests.find((x) => x.id === s.guestId);
     if (!s || !g) return null;
     return {
-      stay: { id: s.id, guestId: s.guestId, status: s.status, isDirect: s.isDirect, pointsProcessedAt: s.pointsProcessedAt },
+      stay: {
+        id: s.id,
+        guestId: s.guestId,
+        status: s.status,
+        isDirect: s.isDirect,
+        checkOut: s.checkOut,
+        pointsProcessedAt: s.pointsProcessedAt,
+      },
       charges: s.charges.map((c) => ({ category: c.category, amount: c.amount })),
       guest: {
         id: g.id,
@@ -61,7 +80,12 @@ export class InMemoryStayRepository implements StayRepository {
     for (const t of c.transactions) this.transactions.push({ ...t, createdAt: c.processedAt });
     s.status = 'CHECKED_OUT';
     s.pointsProcessedAt = c.processedAt;
-    if (c.newTierRank !== undefined) this.tiers.set(c.guestId, { rank: c.newTierRank, validUntil: c.tierValidUntil });
+    const current = this.tiers.get(c.guestId)?.rank ?? 0;
+    if (c.newTierRank !== undefined && c.newTierRank > current) {
+      this.tiers.set(c.guestId, { rank: c.newTierRank, validUntil: c.tierValidUntil });
+    } else if (c.newTierRank === undefined && c.tierValidUntil) {
+      this.tiers.set(c.guestId, { rank: current, validUntil: c.tierValidUntil });
+    }
     if (c.clearWelcomePending) {
       const g = this.guests.guests.find((x) => x.id === c.guestId);
       if (g) g.welcomeBonusPending = 0;

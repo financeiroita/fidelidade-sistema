@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { StayAlreadyProcessedError } from '../../src/application/ports';
 import { API_KEY, makeApp } from '../helpers';
 
 const headers = { 'x-api-key': API_KEY };
@@ -26,8 +27,9 @@ const stay = (guestId: string, charges: object[], channel = 'DIRECT_WEBSITE', ex
 const checkout = (id: string) => ctx.app.inject({ method: 'POST', url: `/stays/${id}/checkout`, headers });
 
 /** Registra e conclui uma estadia; devolve o resultado do check-out. */
+let seq = 0;
 async function complete(guestId: string, charges: object[], channel = 'DIRECT_WEBSITE') {
-  const { id } = (await stay(guestId, charges, channel)).json();
+  const { id } = (await stay(guestId, charges, channel, { externalRef: `T-${++seq}` })).json();
   return (await checkout(id)).json();
 }
 
@@ -54,6 +56,76 @@ describe('POST /stays', () => {
     expect((await stay(g.id, [], 'TELEPATIA')).statusCode).toBe(422);
     const r = await stay('7b0c4b7e-0000-4000-8000-000000000000', [{ category: 'ROOM', amount: 100 }]);
     expect(r.statusCode).toBe(404);
+  });
+});
+
+describe('lançamento sem duplicar e com limites', () => {
+  const room = [{ category: 'ROOM', amount: 1000 }];
+
+  it('recusa o mesmo identificador externo e o mesmo hóspede/datas sem identificador', async () => {
+    const g = await signup(ana);
+    expect((await stay(g.id, room, 'PHONE', { externalRef: 'REC-001' })).statusCode).toBe(201);
+    expect((await stay(g.id, room, 'PHONE', { externalRef: 'REC-001' })).statusCode).toBe(409);
+    expect((await stay(g.id, room, 'PHONE', { externalRef: 'REC-002' })).statusCode).toBe(201);
+    expect((await stay(g.id, room)).statusCode).toBe(201);
+    expect((await stay(g.id, room)).statusCode).toBe(409);
+  });
+
+  it('limita valores, centavos e datas absurdas', async () => {
+    const g = await signup(ana);
+    expect((await stay(g.id, [{ category: 'ROOM', amount: 10.005 }])).statusCode).toBe(422);
+    expect((await stay(g.id, [{ category: 'ROOM', amount: 200_000.01 }])).statusCode).toBe(422);
+    const many = Array.from({ length: 4 }, () => ({ category: 'ROOM', amount: 150_000 }));
+    expect((await stay(g.id, many)).statusCode).toBe(422);
+    expect((await stay(g.id, room, 'PHONE', { checkIn: '0001-01-01' })).statusCode).toBe(422);
+  });
+
+  it('check-out de estadia que ainda não aconteceu é recusado (409)', async () => {
+    const g = await signup(ana);
+    const future = await stay(g.id, room, 'PHONE', { checkIn: '2026-12-01', checkOut: '2026-12-05' });
+    expect((await checkout(future.json().id)).statusCode).toBe(409);
+    expect(ctx.stays.balance(g.id)).toBe(0);
+  });
+});
+
+describe('arredondamento em centavos', () => {
+  it('0,60 + 0,30 + 0,10 somam 1 ponto (sem perder por ponto flutuante)', async () => {
+    const g = await signup(ana);
+    const r = await complete(g.id, [
+      { category: 'ROOM', amount: 0.6 },
+      { category: 'ROOM', amount: 0.3 },
+      { category: 'ROOM', amount: 0.1 },
+    ], 'OTA');
+    expect(r.earned).toBe(1);
+  });
+});
+
+describe('concorrência no mesmo hóspede', () => {
+  it('se o commit perde a corrida por dados do hóspede, recalcula e não perde o crédito', async () => {
+    const a = await signup(ana);
+    const b = await signup({ ...bia, referralCode: a.referralCode });
+    const { id } = (await stay(b.id, [{ category: 'ROOM', amount: 1000 }], 'OTA')).json();
+    // Simula outro processamento que paga o bônus entre a leitura e o commit: 1ª tentativa falha.
+    const real = ctx.stays.commitCheckout.bind(ctx.stays);
+    let calls = 0;
+    ctx.stays.commitCheckout = async (c) => {
+      if (calls++ === 0) throw new StayAlreadyProcessedError();
+      return real(c);
+    };
+    const r = (await checkout(id)).json();
+    expect(r).toMatchObject({ alreadyProcessed: false, earned: 1000 });
+    expect(calls).toBe(2);
+    expect(ctx.stays.balance(b.id)).toBe(1500);
+    expect(ctx.stays.balance(a.id)).toBe(1000);
+  });
+
+  it('manter o nível renova a validade', async () => {
+    const g = await signup(ana);
+    await complete(g.id, [{ category: 'ROOM', amount: 3500 }], 'OTA');
+    const first = ctx.stays.tiers.get(g.id)!.validUntil!;
+    expect(first.toISOString().startsWith('2027-07-13')).toBe(true);
+    await complete(g.id, [{ category: 'ROOM', amount: 100 }], 'OTA');
+    expect(ctx.stays.tiers.get(g.id)!.rank).toBe(1);
   });
 });
 

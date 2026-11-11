@@ -5,7 +5,6 @@ import { expirationDate } from '../domain/points/expiry';
 import { isDirectChannel, nightsBetween, type StayInput } from '../domain/stays/stay';
 import { resolveTier } from '../domain/tiers/tier';
 import {
-  GuestNotFoundError,
   StayAlreadyProcessedError,
   StayNotEligibleError,
   StayNotFoundError,
@@ -42,6 +41,7 @@ export async function registerStay(deps: LoyaltyDeps, input: StayInput): Promise
     roomType: input.roomType,
     adults: input.adults,
     children: input.children,
+    externalRef: input.externalRef,
     charges: input.charges,
   });
   return { id, nights };
@@ -51,7 +51,8 @@ export async function registerStay(deps: LoyaltyDeps, input: StayInput): Promise
  * Regra pura: o que creditar no check-out. Sem acesso a banco.
  * - Pontos pelo nível vigente do hóspede no momento do check-out.
  * - No 1º check-out com receita: libera as boas-vindas pendentes e paga o indicador.
- * - Nível sobe se os pontos qualificáveis em 12 meses atingirem o limiar (descer é tarefa noturna).
+ * - Nível sobe se os pontos qualificáveis em 12 meses atingirem o limiar; se for mantido,
+ *   a validade é renovada (descer é tarefa noturna).
  */
 export function planCheckout(
   data: CheckoutData,
@@ -107,6 +108,7 @@ export function planCheckout(
   const qualifyingNow = qualifyingBefore + lines.filter((l) => l.qualifying).reduce((s, l) => s + l.points, 0);
   const reached = resolveTier(qualifyingNow, cfg);
   const upgraded = reached.rank > tier.rank;
+  const maintained = !upgraded && tier.rank > 0 && qualifyingNow >= tier.minQualifyingPts;
 
   return {
     commit: {
@@ -114,7 +116,7 @@ export function planCheckout(
       guestId: guest.id,
       transactions,
       newTierRank: upgraded ? reached.rank : undefined,
-      tierValidUntil: upgraded ? addMonths(now, cfg.tierWindowMonths) : undefined,
+      tierValidUntil: upgraded || maintained ? addMonths(now, cfg.tierWindowMonths) : undefined,
       clearWelcomePending,
       processedAt: now,
     },
@@ -132,32 +134,45 @@ export interface CheckoutResult {
   upgraded: boolean;
 }
 
-/** Processa o check-out: credita pontos uma única vez por estadia (idempotente). */
+const MAX_ATTEMPTS = 3;
+
+/**
+ * Processa o check-out: credita pontos uma única vez por estadia (idempotente).
+ * Se outro processamento concorrente do mesmo hóspede mudar o cenário (ex.: o bônus de
+ * indicação já foi pago por outra estadia), recarrega os dados e recalcula.
+ */
 export async function processCheckout(deps: LoyaltyDeps, stayId: string): Promise<CheckoutResult> {
   const cfg = deps.config ?? loyaltyConfig;
   const now = (deps.now ?? (() => new Date()))();
-  const data = await deps.stays.loadCheckout(stayId);
-  if (!data) throw new StayNotFoundError();
 
-  const tierName = (cfg.tiers.find((t) => t.rank === data.guest.tierRank) ?? cfg.tiers[0]).name;
-  if (data.stay.pointsProcessedAt) {
-    return { stayId, alreadyProcessed: true, earned: 0, tier: tierName, upgraded: false };
-  }
-  if (data.stay.status === 'CANCELLED' || data.stay.status === 'NO_SHOW') {
-    throw new StayNotEligibleError('Estadia cancelada ou no-show não gera pontos.');
-  }
+  for (let attempt = 1; ; attempt++) {
+    const data = await deps.stays.loadCheckout(stayId);
+    if (!data) throw new StayNotFoundError();
 
-  const qualifyingBefore = await deps.stays.qualifyingPointsSince(data.guest.id, addMonths(now, -cfg.tierWindowMonths));
-  const plan = planCheckout(data, qualifyingBefore, now, cfg);
-  try {
-    await deps.stays.commitCheckout(plan.commit);
-  } catch (e) {
-    if (e instanceof StayAlreadyProcessedError) {
+    const tierName = (cfg.tiers.find((t) => t.rank === data.guest.tierRank) ?? cfg.tiers[0]).name;
+    if (data.stay.pointsProcessedAt) {
       return { stayId, alreadyProcessed: true, earned: 0, tier: tierName, upgraded: false };
     }
-    throw e;
-  }
-  return { stayId, alreadyProcessed: false, earned: plan.earned, tier: plan.tier, upgraded: plan.upgraded };
-}
+    if (data.stay.status === 'CANCELLED' || data.stay.status === 'NO_SHOW') {
+      throw new StayNotEligibleError('Estadia cancelada ou no-show não gera pontos.');
+    }
+    // Tolerância de 1 dia pelo fuso do hotel; o check-out não pode ser de uma data futura.
+    if (data.stay.checkOut.getTime() > now.getTime() + 86_400_000) {
+      throw new StayNotEligibleError('O check-out ainda não aconteceu.');
+    }
 
-export { GuestNotFoundError };
+    const qualifyingBefore = await deps.stays.qualifyingPointsSince(
+      data.guest.id,
+      addMonths(now, -cfg.tierWindowMonths),
+    );
+    const plan = planCheckout(data, qualifyingBefore, now, cfg);
+    try {
+      await deps.stays.commitCheckout(plan.commit);
+      return { stayId, alreadyProcessed: false, earned: plan.earned, tier: plan.tier, upgraded: plan.upgraded };
+    } catch (e) {
+      // Conflito: ou esta estadia já foi processada (o próximo ciclo detecta e responde) ou os
+      // dados do hóspede mudaram no meio (o próximo ciclo recalcula com os dados novos).
+      if (!(e instanceof StayAlreadyProcessedError) || attempt >= MAX_ATTEMPTS) throw e;
+    }
+  }
+}

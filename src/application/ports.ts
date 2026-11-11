@@ -53,11 +53,20 @@ export interface NewStay {
   roomType?: string;
   adults: number;
   children: number;
+  /** Identificador único do lançamento manual (evita duplicar). */
+  externalRef?: string;
   charges: Array<ChargeInput & { description?: string }>;
 }
 
 export interface CheckoutData {
-  stay: { id: string; guestId: string; status: StayStatus; isDirect: boolean; pointsProcessedAt: Date | null };
+  stay: {
+    id: string;
+    guestId: string;
+    status: StayStatus;
+    isDirect: boolean;
+    checkOut: Date;
+    pointsProcessedAt: Date | null;
+  };
   charges: ChargeInput[];
   guest: { id: string; tierRank: number; referredById: string | null; welcomeBonusPending: number };
   /** O hóspede já ganhou pontos por alguma estadia/consumo antes? (estadia sem receita não conta) */
@@ -75,6 +84,8 @@ export interface CheckoutCommit {
 }
 
 export class GuestNotFoundError extends Error {}
+/** Estadia já lançada (mesmo identificador ou mesmo hóspede e datas). */
+export class DuplicateStayError extends Error {}
 export class StayNotFoundError extends Error {}
 export class StayNotEligibleError extends Error {}
 /** Outro processamento do mesmo check-out chegou primeiro. */

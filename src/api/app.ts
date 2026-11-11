@@ -1,8 +1,10 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { processCheckout, registerStay, type LoyaltyDeps } from '../application/checkout';
+import { z } from 'zod';
 import {
   DuplicateGuestError,
+  DuplicateStayError,
   GuestNotFoundError,
   StayNotEligibleError,
   StayNotFoundError,
@@ -64,11 +66,13 @@ export function buildApp(deps: AppDeps, opts: { logger?: boolean } = {}): Fastif
         return reply.code(201).send(await registerStay(deps.loyalty, parsed.data));
       } catch (e) {
         if (e instanceof GuestNotFoundError) return reply.code(404).send({ error: 'guest_not_found' });
+        if (e instanceof DuplicateStayError) return reply.code(409).send({ error: 'duplicate_stay' });
         throw e;
       }
     });
 
     internal.post<{ Params: { id: string } }>('/stays/:id/checkout', async (req, reply) => {
+      if (!z.string().uuid().safeParse(req.params.id).success) return reply.code(404).send({ error: 'stay_not_found' });
       try {
         return reply.send(await processCheckout(deps.loyalty, req.params.id));
       } catch (e) {
@@ -80,10 +84,11 @@ export function buildApp(deps: AppDeps, opts: { logger?: boolean } = {}): Fastif
   });
 
   // Nunca devolve detalhes internos nem dados do corpo da requisição.
-  app.setErrorHandler((err: { statusCode?: number; message?: string }, _req, reply) => {
+  app.setErrorHandler((err: { statusCode?: number; name?: string; code?: string }, _req, reply) => {
     const status = err.statusCode ?? 500;
     if (status >= 500) {
-      app.log.error({ err: { message: err.message } }, 'erro interno');
+      // Só o tipo do erro: mensagens do Prisma podem conter dados pessoais do corpo da requisição.
+      app.log.error({ errName: err.name, errCode: err.code }, 'erro interno');
       return reply.code(500).send({ error: 'internal_error' });
     }
     return reply.code(status).send({ error: 'bad_request' });

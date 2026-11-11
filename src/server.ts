@@ -3,14 +3,18 @@ import { buildApp } from './api/app';
 import { PrismaGuestRepository } from './infra/prisma/guestRepository';
 import { PrismaStayRepository } from './infra/prisma/stayRepository';
 
+// Exige tamanho mínimo e variedade de caracteres (rejeita "aaaa...", "1234...").
+const strongSecret = (v: string | undefined, minLen: number): v is string =>
+  !!v && v.length >= minLen && new Set(v).size >= 12;
+
 const secret = process.env.DOCUMENT_HASH_SECRET;
-if (!secret || secret.length < 32) {
-  console.error('Defina DOCUMENT_HASH_SECRET (mínimo 32 caracteres) no .env');
+if (!strongSecret(secret, 32)) {
+  console.error('Defina DOCUMENT_HASH_SECRET no .env: mínimo 32 caracteres aleatórios e variados.');
   process.exit(1);
 }
 const internalApiKey = process.env.INTERNAL_API_KEY;
-if (!internalApiKey || internalApiKey.length < 24) {
-  console.error('Defina INTERNAL_API_KEY (mínimo 24 caracteres) no .env');
+if (!strongSecret(internalApiKey, 24)) {
+  console.error('Defina INTERNAL_API_KEY no .env: mínimo 24 caracteres aleatórios e variados.');
   process.exit(1);
 }
 
