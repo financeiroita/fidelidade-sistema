@@ -103,6 +103,7 @@ model Guest {
   tierId           Int
   tier             Tier                @relation(fields: [tierId], references: [id])
   tierValidUntil   DateTime?
+  welcomeBonusPending Int              @default(0) // boas-vindas por indicação, creditadas após o 1º check-out
   referralCode     String              @unique
   referredById     String?
   referredBy       Guest?              @relation("Referral", fields: [referredById], references: [id])

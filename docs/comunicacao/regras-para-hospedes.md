@@ -16,7 +16,7 @@ Cadastre-se grátis e comece a acumular pontos já na sua próxima estadia. Sem 
 | Eventos | 1 ponto a cada R$ 2 |
 | Reservou direto com o hotel (site, telefone ou WhatsApp) | +20% de pontos extras na hospedagem |
 | Mês do seu aniversário | 500 pontos de presente |
-| Indicou um amigo | 1.000 pontos para você e 500 de boas-vindas para ele |
+| Indicou um amigo | 1.000 pontos para você e 500 para ele, ambos após a primeira estadia do amigo |
 | Campanhas especiais | Pontos em dobro ou bônus em datas selecionadas |
 
 **Exemplo:** uma estadia de 3 noites (R$ 2.100) com R$ 400 em restaurante rende 2.500 pontos. Se você reservou direto, ganha mais 420 pontos de bônus.

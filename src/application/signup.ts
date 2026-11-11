@@ -1,9 +1,8 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { loyaltyConfig, type LoyaltyConfig } from '../config/loyalty';
-import { expirationDate } from '../domain/points/expiry';
 import type { SignupInput } from '../domain/guests/signup';
 import { documentLast4, hashDocument } from '../infra/security/document';
-import { DuplicateGuestError, ReferralCodeCollisionError, type GuestRepository, type NewCredit } from './ports';
+import { DuplicateGuestError, ReferralCodeCollisionError, type GuestRepository } from './ports';
 
 export interface SignupDeps {
   repo: GuestRepository;
@@ -16,7 +15,8 @@ export interface SignupResult {
   id: string;
   referralCode: string;
   tier: string;
-  welcomePoints: number;
+  /** Pontos de boas-vindas que serão creditados após o 1º check-out (ADR 0006). */
+  pendingWelcomePoints: number;
 }
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -48,17 +48,8 @@ export async function signupGuest(deps: SignupDeps, input: SignupInput): Promise
   const referrer = input.referralCode ? await repo.findByReferralCode(input.referralCode) : null;
 
   const id = randomUUID();
-  const welcomePoints = referrer ? cfg.referral.refereeWelcomePoints : 0;
-  const welcome: NewCredit | undefined = referrer
-    ? {
-        type: 'EARN_BONUS',
-        points: welcomePoints,
-        qualifying: false,
-        expiresAt: expirationDate(now, cfg),
-        idempotencyKey: `welcome:${id}`,
-        note: 'Boas-vindas por indicação',
-      }
-    : undefined;
+  // Não vira ponto no cadastro: só após o 1º check-out confirmado, para evitar contas falsas.
+  const pendingWelcomePoints = referrer ? cfg.referral.refereeWelcomePoints : 0;
 
   const guestData = (referralCode: string) => ({
       id,
@@ -77,14 +68,15 @@ export async function signupGuest(deps: SignupDeps, input: SignupInput): Promise
       consentAt: now,
       referralCode,
       referredById: referrer?.id,
+      welcomeBonusPending: pendingWelcomePoints,
   });
 
   // Duas inscrições simultâneas podem sortear o mesmo código: tenta de novo com outro.
   for (let attempt = 0; ; attempt++) {
     const referralCode = await generateReferralCode(repo, input.fullName);
     try {
-      await repo.create(guestData(referralCode), welcome);
-      return { id, referralCode, tier: cfg.tiers[0].name, welcomePoints };
+      await repo.create(guestData(referralCode));
+      return { id, referralCode, tier: cfg.tiers[0].name, pendingWelcomePoints };
     } catch (e) {
       if (!(e instanceof ReferralCodeCollisionError) || attempt >= 4) throw e;
     }

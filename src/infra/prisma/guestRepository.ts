@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
-import { DuplicateGuestError, ReferralCodeCollisionError, type GuestRepository, type NewCredit, type NewGuest } from '../../application/ports';
+import { DuplicateGuestError, ReferralCodeCollisionError, type GuestRepository, type NewGuest } from '../../application/ports';
 
 export class PrismaGuestRepository implements GuestRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -14,7 +14,7 @@ export class PrismaGuestRepository implements GuestRepository {
     return this.prisma.guest.findUnique({ where: { referralCode: code }, select: { id: true } });
   }
 
-  async create(g: NewGuest, welcome?: NewCredit): Promise<void> {
+  async create(g: NewGuest): Promise<void> {
     try {
       await this.prisma.guest.create({
         data: {
@@ -35,19 +35,7 @@ export class PrismaGuestRepository implements GuestRepository {
           referralCode: g.referralCode,
           tier: { connect: { rank: 0 } },
           referredBy: g.referredById ? { connect: { id: g.referredById } } : undefined,
-          pointsTx: welcome
-            ? {
-                create: {
-                  type: welcome.type,
-                  points: welcome.points,
-                  remaining: welcome.points,
-                  qualifying: welcome.qualifying,
-                  expiresAt: welcome.expiresAt,
-                  idempotencyKey: welcome.idempotencyKey,
-                  note: welcome.note,
-                },
-              }
-            : undefined,
+          welcomeBonusPending: g.welcomeBonusPending,
         },
       });
     } catch (e) {

@@ -8,7 +8,7 @@
 - Primeiro endpoint: `POST /guests` (cadastro). Respostas: 201 criado, 409 duplicado (CPF ou e-mail), 422 validação.
 - **CPF/passaporte nunca fica em claro.** `Guest.document` guarda um HMAC-SHA256 com chave secreta (`DOCUMENT_HASH_SECRET`); `documentLast4` guarda só os 4 últimos caracteres para exibição. O hash é determinístico, então serve para unicidade e para casar com o CPF vindo do Erbon.
 - Limitação: HMAC não é reversível. Se for preciso exibir ou exportar o CPF completo, é necessária uma decisão nova (criptografia reversível). A chave não pode ser trocada sem recalcular todos os hashes.
-- Boas-vindas por indicação (500 pontos) são creditadas no cadastro, em lote com validade de 24 meses. O bônus do indicador (1.000 pontos) só sai após o primeiro check-out do indicado (a implementar).
+- Boas-vindas por indicação (500 pontos) **não são creditadas no cadastro**: ficam em `Guest.welcomeBonusPending` e só viram pontos (lote de 24 meses) após o 1º check-out confirmado do próprio hóspede, para desestimular contas falsas. O crédito acontece no fluxo de check-out (a implementar). O bônus do indicador (1.000) segue a mesma regra.
 - Indicação com código inexistente não bloqueia o cadastro.
 - Marketing exige consentimento explícito (padrão: falso). Aceite do regulamento é obrigatório.
 
@@ -21,7 +21,7 @@
 Corrigido: data de nascimento impossível (ex.: 31/02), colisão do código de indicação (agora tenta de novo em vez de responder 409), formato do passaporte (hífen e espaços ignorados na comparação), telefone com dígitos repetidos, e checagem dos níveis na inicialização do servidor.
 
 Em aberto, aguardando decisão do hotel (abuso e LGPD):
-1. **Farming de pontos por indicação** (alto): cadastros falsos em cadeia geram 500 pontos cada. Opções: liberar os pontos de boas-vindas só após o 1º check-out; confirmar e-mail; limitar indicações por código; rate limit e anti-robô (bloqueantes antes de abrir o cadastro ao público).
+1. **Farming de pontos por indicação** (alto; DECIDIDO: boas-vindas só após o 1º check-out; restam rate limit, anti-robô e limite de indicações por código): cadastros falsos em cadeia geram 500 pontos cada. Opções: liberar os pontos de boas-vindas só após o 1º check-out; confirmar e-mail; limitar indicações por código; rate limit e anti-robô (bloqueantes antes de abrir o cadastro ao público).
 2. **Código de indicação adivinhável** (alto): sufixo de 4 caracteres e primeiro nome no prefixo. Aumentar o sufixo e não revelar se o código existe.
 3. **Idade mínima** (LGPD, menores): exigir maioridade ou responsável?
 4. **Anonimização**: definir como apagar documento, e-mail, telefone e nome de quem pedir exclusão, liberando o recadastro.

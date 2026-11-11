@@ -10,7 +10,7 @@ Todos os números ficam em `src/config/loyalty.ts`; alterar lá e registrar novo
 - Gastos extras no folio, por categoria: A&B 1 pt/R$, SPA 1 pt/R$, Eventos 0,5 pt/R$, Outros 0 (multiplicador do nível também se aplica).
 - **Bônus reserva direta** (site/telefone/WhatsApp/balcão): +20% sobre os pontos base da diária.
 - **Aniversário**: 500 pontos no mês do aniversário (1x/ano; só com estadia concluída nos últimos 24 meses).
-- **Indicação**: indicado ganha 500 pontos de boas-vindas; indicador ganha 1.000 após o 1º check-out do indicado.
+- **Indicação**: indicado ganha 500 pontos de boas-vindas **após o seu 1º check-out** (decisão 2026-11-11, ADR 0006); indicador ganha 1.000 após o 1º check-out do indicado.
 - **Campanhas**: bônus por período/regra (ex.: baixa temporada +50%), tabela Campaign.
 - Cancelamento/no-show: sem pontos. Estorno/reembolso no folio: estorno proporcional.
 - Hipótese assumida: diárias também pontuam (o cliente listou só extras e bônus). Confirmar.
