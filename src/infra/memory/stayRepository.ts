@@ -17,9 +17,11 @@ interface StoredStay extends NewStay {
   pointsProcessedAt: Date | null;
 }
 
-export type StoredTx = Omit<NewPointsTx, 'type'> & {
+export type StoredTx = Omit<NewPointsTx, 'type' | 'expiresAt'> & {
   id: string;
   type: NewPointsTx['type'] | 'EXPIRE';
+  /** Só créditos têm validade; o lançamento de expiração não. */
+  expiresAt?: Date;
   remaining: number;
   createdAt: Date;
 };
@@ -65,6 +67,7 @@ export class InMemoryStayRepository implements StayRepository {
       guest: {
         id: g.id,
         tierRank: this.tiers.get(g.id)?.rank ?? 0,
+        tierValidUntil: this.tiers.get(g.id)?.validUntil ?? null,
         referredById: g.referredById ?? null,
         welcomeBonusPending: g.welcomeBonusPending,
       },

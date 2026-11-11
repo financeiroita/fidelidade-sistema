@@ -15,6 +15,7 @@
 
 ## Limitações conhecidas
 - A rotina de check-out com o PostgreSQL real ainda não foi testada (os testes usam o repositório em memória).
+- (Atualizado) A rotina noturna e o nível vencido foram implementados no ADR 0008.
 - A chave interna é única e compartilhada; sem usuários individuais nem registro de quem lançou. Avaliar autenticação por usuário antes de dar acesso à recepção.
 - Rotina noturna: expiração de pontos, rebaixamento de nível e aviso de vencimento ainda não existem.
 - Importação automática do Erbon continua pendente (levantar a API).
@@ -31,6 +32,6 @@ Corrigido:
 Decisões do hotel em aberto:
 1. ~~Pontos qualificáveis com ou sem multiplicador?~~ DECIDIDO: só valor base, sem multiplicador (coluna `qualifyingPts`). Os limiares de nível passam a ser em pontos-base, ou seja, equivalem ao valor gasto em reais.
 2. **Estorno depois do check-out:** hoje só se compensa estorno lançado antes do check-out e na mesma categoria. Falta rota de estorno que reduza os pontos já creditados (tipo REVERSAL).
-3. **Nível vencido:** até existir a rotina noturna, um nível sem atividade continua valendo.
+3. ~~Nível vencido~~: resolvido no ADR 0008 (rotina noturna) e no check-out, que ignora o multiplicador de nível vencido.
 
 Segurança ainda pendente: usuário individual por funcionário e registro de quem lançou (`createdBy`); limite de requisições nas rotas internas; restringir essas rotas por rede/IP.

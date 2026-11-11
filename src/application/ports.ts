@@ -69,7 +69,14 @@ export interface CheckoutData {
     pointsProcessedAt: Date | null;
   };
   charges: ChargeInput[];
-  guest: { id: string; tierRank: number; referredById: string | null; welcomeBonusPending: number };
+  guest: {
+    id: string;
+    tierRank: number;
+    /** Validade do nível. Nível vencido (rotina noturna ainda não rodou) não dá multiplicador. */
+    tierValidUntil: Date | null;
+    referredById: string | null;
+    welcomeBonusPending: number;
+  };
   /** O hóspede já ganhou pontos por alguma estadia/consumo antes? (estadia sem receita não conta) */
   hasPriorEarning: boolean;
 }
@@ -109,11 +116,19 @@ export interface MaintenanceRepository {
   loadActiveLots(): Promise<LotRow[]>;
   /** Zera o lote e grava o lançamento EXPIRE. Devolve false se o lote mudou/já foi tratado. */
   expireLot(item: ExpirationPlan): Promise<boolean>;
-  /** Hóspedes acima do nível inicial cuja validade do nível acabou (ou nunca foi definida). */
-  findTierReviewCandidates(now: Date): Promise<Array<{ guestId: string; tierRank: number }>>;
-  qualifyingPointsSince(guestId: string, since: Date): Promise<number>;
-  /** Aplica a revisão. Devolve false se o nível foi renovado por outro processo no meio. */
-  applyTierReview(guestId: string, newRank: number, validUntil: Date | null, now: Date): Promise<boolean>;
+  /** Hóspedes ativos acima do nível inicial cuja validade do nível acabou (ou nunca foi definida). */
+  findTierReviewCandidates(now: Date): Promise<Array<{ guestId: string }>>;
+  /**
+   * Revisa o nível de um hóspede. Trava o hóspede, soma os pontos-base desde `since` já sob a
+   * trava (sem leitura velha) e aplica a decisão. Devolve null se não há o que revisar
+   * (validade renovada por um check-out no meio, hóspede anonimizado ou já no nível inicial).
+   */
+  reviewTier(
+    guestId: string,
+    now: Date,
+    since: Date,
+    decide: (qualifyingPts: number) => { newRank: number; validUntil: Date | null },
+  ): Promise<{ previousRank: number; newRank: number } | null>;
   /** Grava avisos novos (ignora os já existentes). Devolve quantos foram criados. */
   saveNotices(notices: NoticePlan[]): Promise<number>;
 }

@@ -45,7 +45,7 @@ const run = () => runNightly({ repo: maint, now: () => clock });
 beforeEach(() => {
   clock = new Date('2026-03-01T12:00:00Z');
   ctx = makeApp(undefined, () => clock);
-  maint = new InMemoryMaintenanceRepository(ctx.stays, ctx.guests);
+  maint = new InMemoryMaintenanceRepository(ctx.stays, ctx.guests, () => clock);
 });
 
 const guest = async () => (await ctx.app.inject({ method: 'POST', url: '/guests', payload: ana })).json();
@@ -89,14 +89,107 @@ describe('avisos de vencimento', () => {
     const now = new Date('2026-01-01T00:00:00Z');
     const d = (days: number) => new Date(now.getTime() + days * 86_400_000);
     const lots: LotRow[] = [
-      { id: 'a', guestId: 'g', remaining: 100, expiresAt: d(10) },
-      { id: 'b', guestId: 'g', remaining: 200, expiresAt: d(50) },
-      { id: 'c', guestId: 'g', remaining: 400, expiresAt: d(200) },
-      { id: 'x', guestId: 'h', remaining: 50, expiresAt: d(400) },
+      { id: 'a', guestId: 'g', remaining: 100, expiresAt: d(10), guestActive: true },
+      { id: 'b', guestId: 'g', remaining: 200, expiresAt: d(50), guestActive: true },
+      { id: 'c', guestId: 'g', remaining: 400, expiresAt: d(200), guestActive: true },
+      { id: 'x', guestId: 'h', remaining: 50, expiresAt: d(400), guestActive: true },
     ];
     const plans = planNotices(lots, now, [90, 30]);
     expect(plans).toHaveLength(1);
     expect(plans[0]).toMatchObject({ guestId: 'g', windowDays: 30, points: 100 });
+  });
+
+  it('não avisa hóspede anonimizado, e respeita o limite exato da janela', () => {
+    const now = new Date('2026-01-01T00:00:00Z');
+    const at = (ms: number) => new Date(now.getTime() + ms);
+    const day = 86_400_000;
+    const lots: LotRow[] = [
+      { id: 'a', guestId: 'anon', remaining: 100, expiresAt: at(day), guestActive: false },
+      { id: 'b', guestId: 'no-limite', remaining: 10, expiresAt: at(30 * day), guestActive: true },
+      { id: 'c', guestId: 'fora', remaining: 10, expiresAt: at(90 * day + 1), guestActive: true },
+    ];
+    const plans = planNotices(lots, now, [90, 30]);
+    expect(plans.map((p) => [p.guestId, p.windowDays])).toEqual([['no-limite', 30]]);
+  });
+});
+
+describe('limites e falhas', () => {
+  it('lote que vence exatamente agora expira; 1 ms antes do vencimento, não', async () => {
+    const g = await guest();
+    await stayDone(g.id, 1000); // vence em 2028-03-01T12:00:00.000Z
+    clock = new Date('2028-03-01T11:59:59.999Z');
+    expect((await run()).expiredLots).toBe(0);
+    clock = new Date('2028-03-01T12:00:00.000Z');
+    expect((await run()).expiredLots).toBe(1);
+  });
+
+  it('lote com saldo diferente do lido não expira naquela noite e expira certo na seguinte', async () => {
+    const g = await guest();
+    await stayDone(g.id, 1000);
+    clock = new Date('2028-03-02T00:00:00Z');
+    const lot = ctx.stays.transactions.find((t) => t.type === 'EARN_STAY')!;
+    const real = maint.loadActiveLots.bind(maint);
+    maint.loadActiveLots = async () => {
+      const rows = await real();
+      lot.remaining -= 200; // um resgate parcial acontece depois da leitura
+      return rows;
+    };
+    expect((await run()).expiredLots).toBe(0);
+    maint.loadActiveLots = real;
+    const second = await run();
+    expect(second).toMatchObject({ expiredLots: 1, expiredPoints: 800 }); // só o saldo que sobrou
+    expect(lot.remaining).toBe(0);
+  });
+
+  it('falha em um lote conta o erro, registra a causa sem dados pessoais e segue com os demais', async () => {
+    const a = await guest();
+    await stayDone(a.id, 1000);
+    const b = (
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/guests',
+        payload: { ...ana, email: 'b@x.com', document: '111.444.777-35' },
+      })
+    ).json();
+    await stayDone(b.id, 2000);
+    clock = new Date('2028-03-02T00:00:00Z');
+    const events: Array<{ step: string; id?: string; code: string }> = [];
+    const real = maint.expireLot.bind(maint);
+    let first = true;
+    maint.expireLot = async (item) => {
+      if (first) {
+        first = false;
+        throw Object.assign(new Error('detalhe com e-mail ana@exemplo.com'), { code: 'P1001' });
+      }
+      return real(item);
+    };
+    const r = await runNightly({ repo: maint, now: () => clock, logger: (e) => events.push(e) });
+    expect(r).toMatchObject({ errors: 1, expiredLots: 1 });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ step: 'expirar-lote', code: 'P1001' });
+    expect(JSON.stringify(events)).not.toContain('ana@exemplo.com');
+  });
+
+  it('falha ao carregar os lotes não impede a revisão de nível', async () => {
+    const g = await guest();
+    await stayDone(g.id, 3500);
+    clock = new Date('2027-03-02T00:00:00Z');
+    maint.loadActiveLots = async () => {
+      throw new Error('banco fora');
+    };
+    const r = await run();
+    expect(r.errors).toBe(1);
+    expect(r).toMatchObject({ tierReviews: 1, tierDowngrades: 1 });
+  });
+});
+
+describe('nível vencido no check-out (rotina ainda não rodou)', () => {
+  it('não dá o multiplicador do nível vencido: vale o que o hóspede realmente atinge', async () => {
+    const g = await guest();
+    expect((await stayDone(g.id, 3500)).tier).toBe('Prata'); // Prata até 2027-03-01
+    clock = new Date('2027-06-01T12:00:00Z'); // validade vencida, a rotina não rodou
+    const r = await stayDone(g.id, 1000);
+    expect(r.earned).toBe(1000); // sem 1,25x: nos últimos 12 meses ele tem 0 pontos-base
   });
 });
 

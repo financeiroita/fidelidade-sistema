@@ -1,4 +1,5 @@
 import type { LoyaltyConfig } from '../../config/loyalty';
+import { addMonths } from '../time';
 import { resolveTier } from '../tiers/tier';
 
 /** Lote de pontos creditado, ainda com saldo. */
@@ -7,6 +8,8 @@ export interface LotRow {
   guestId: string;
   remaining: number;
   expiresAt: Date;
+  /** false para hóspede anonimizado (LGPD): os pontos vencem, mas ele não recebe aviso. */
+  guestActive: boolean;
 }
 
 export interface ExpirationPlan {
@@ -26,12 +29,6 @@ export interface NoticePlan {
 const DAY = 86_400_000;
 const utcDay = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 
-export const addMonths = (d: Date, months: number) => {
-  const r = new Date(d);
-  r.setUTCMonth(r.getUTCMonth() + months);
-  return r;
-};
-
 /** Lotes vencidos com saldo: cada um vira um lançamento de expiração. */
 export function planExpirations(lots: LotRow[], now: Date): ExpirationPlan[] {
   return lots
@@ -40,14 +37,15 @@ export function planExpirations(lots: LotRow[], now: Date): ExpirationPlan[] {
 }
 
 /**
- * Um aviso por hóspede, na menor janela (ex.: 30 antes de 90) em que há pontos a vencer.
+ * Um aviso por hóspede ativo, na menor janela (ex.: 30 antes de 90) em que há pontos a vencer.
  * A chave (hóspede, janela, data do 1º vencimento) faz a rotina diária não repetir o aviso.
+ * Se entrar outro lote na janela com o mesmo 1º vencimento, o aviso já gravado mantém o total antigo.
  */
 export function planNotices(lots: LotRow[], now: Date, windows: number[]): NoticePlan[] {
   const sorted = [...windows].sort((a, b) => a - b);
   const byGuest = new Map<string, LotRow[]>();
   for (const l of lots) {
-    if (l.remaining <= 0 || l.expiresAt <= now) continue;
+    if (!l.guestActive || l.remaining <= 0 || l.expiresAt <= now) continue;
     byGuest.set(l.guestId, [...(byGuest.get(l.guestId) ?? []), l]);
   }
   const plans: NoticePlan[] = [];

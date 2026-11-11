@@ -1,4 +1,5 @@
 import { LoyaltyConfig } from '../../config/loyalty';
+import { addMonths } from '../time';
 
 export interface Lot {
   id: string;
@@ -11,9 +12,7 @@ export interface Consumption {
 }
 
 export function expirationDate(creditedAt: Date, cfg: LoyaltyConfig): Date {
-  const d = new Date(creditedAt);
-  d.setUTCMonth(d.getUTCMonth() + cfg.expirationMonths);
-  return d;
+  return addMonths(creditedAt, cfg.expirationMonths);
 }
 
 /** Consome pontos FIFO pelo vencimento mais próximo. Lança erro se saldo insuficiente. */

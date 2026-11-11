@@ -8,15 +8,24 @@ export class PrismaMaintenanceRepository implements MaintenanceRepository {
   async loadActiveLots(): Promise<LotRow[]> {
     const rows = await this.prisma.pointsTransaction.findMany({
       where: { remaining: { gt: 0 }, expiresAt: { not: null } },
-      select: { id: true, guestId: true, remaining: true, expiresAt: true },
+      select: { id: true, guestId: true, remaining: true, expiresAt: true, guest: { select: { deletedAt: true } } },
     });
-    return rows.map((r) => ({ id: r.id, guestId: r.guestId, remaining: r.remaining, expiresAt: r.expiresAt as Date }));
+    return rows.map((r) => ({
+      id: r.id,
+      guestId: r.guestId,
+      remaining: r.remaining,
+      expiresAt: r.expiresAt as Date,
+      guestActive: r.guest.deletedAt === null,
+    }));
   }
 
   async expireLot(item: ExpirationPlan): Promise<boolean> {
     try {
       return await this.prisma.$transaction(async (tx) => {
-        // Só expira se o saldo do lote ainda for o que foi lido (um resgate concorrente o teria mudado).
+        // Mesma ordem de trava de todos os fluxos (check-out, resgate futuro): primeiro o hóspede,
+        // depois os lotes. Evita impasse (deadlock) entre processos.
+        await tx.$queryRaw`SELECT id FROM "Guest" WHERE id = ${item.guestId} FOR UPDATE`;
+        // Só expira se o saldo do lote ainda for o que foi lido (um resgate teria mudado).
         const claimed = await tx.pointsTransaction.updateMany({
           where: { id: item.lotId, remaining: item.points },
           data: { remaining: 0 },
@@ -47,30 +56,37 @@ export class PrismaMaintenanceRepository implements MaintenanceRepository {
         tier: { rank: { gt: 0 } },
         OR: [{ tierValidUntil: null }, { tierValidUntil: { lte: now } }],
       },
-      select: { id: true, tier: { select: { rank: true } } },
+      select: { id: true },
     });
-    return rows.map((r) => ({ guestId: r.id, tierRank: r.tier.rank }));
+    return rows.map((r) => ({ guestId: r.id }));
   }
 
-  async qualifyingPointsSince(guestId: string, since: Date): Promise<number> {
-    const r = await this.prisma.pointsTransaction.aggregate({
-      where: { guestId, createdAt: { gte: since } },
-      _sum: { qualifyingPts: true },
-    });
-    return r._sum.qualifyingPts ?? 0;
-  }
-
-  async applyTierReview(guestId: string, newRank: number, validUntil: Date | null, now: Date): Promise<boolean> {
+  async reviewTier(
+    guestId: string,
+    now: Date,
+    since: Date,
+    decide: (qualifyingPts: number) => { newRank: number; validUntil: Date | null },
+  ) {
     return this.prisma.$transaction(async (tx) => {
       // Mesma trava do check-out: não disputa com um crédito que acabou de renovar o nível.
       await tx.$queryRaw`SELECT id FROM "Guest" WHERE id = ${guestId} FOR UPDATE`;
-      const g = await tx.guest.findUnique({ where: { id: guestId }, select: { tierValidUntil: true } });
-      if (!g || (g.tierValidUntil && g.tierValidUntil > now)) return false;
+      const g = await tx.guest.findUnique({
+        where: { id: guestId },
+        select: { tierValidUntil: true, deletedAt: true, tier: { select: { rank: true } } },
+      });
+      if (!g || g.deletedAt || g.tier.rank === 0 || (g.tierValidUntil && g.tierValidUntil > now)) return null;
+
+      // Pontos lidos sob a trava: um check-out concorrente já está refletido.
+      const agg = await tx.pointsTransaction.aggregate({
+        where: { guestId, createdAt: { gte: since } },
+        _sum: { qualifyingPts: true },
+      });
+      const plan = decide(agg._sum.qualifyingPts ?? 0);
       await tx.guest.update({
         where: { id: guestId },
-        data: { tier: { connect: { rank: newRank } }, tierValidUntil: validUntil },
+        data: { tier: { connect: { rank: plan.newRank } }, tierValidUntil: plan.validUntil },
       });
-      return true;
+      return { previousRank: g.tier.rank, newRank: plan.newRank };
     });
   }
 

@@ -74,6 +74,7 @@ export class PrismaStayRepository implements StayRepository {
       guest: {
         id: s.guest.id,
         tierRank: s.guest.tier.rank,
+        tierValidUntil: s.guest.tierValidUntil,
         referredById: s.guest.referredById,
         welcomeBonusPending: s.guest.welcomeBonusPending,
       },

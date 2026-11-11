@@ -138,7 +138,7 @@ describe('check-out e crédito de pontos', () => {
     ]);
     expect(r).toMatchObject({ alreadyProcessed: false, earned: 2920, tier: 'Bronze', upgraded: false });
     expect(ctx.stays.balance(g.id)).toBe(2920);
-    expect(ctx.stays.transactions.every((t) => t.expiresAt.toISOString().startsWith('2028-07-13'))).toBe(true);
+    expect(ctx.stays.transactions.every((t) => t.expiresAt?.toISOString().startsWith('2028-07-13'))).toBe(true);
   });
 
   it('reserva por OTA não ganha o bônus de reserva direta', async () => {

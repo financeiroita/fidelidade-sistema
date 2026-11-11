@@ -19,3 +19,19 @@ Uma vez por dia, de madrugada. No Linux, cron; no Windows, Agendador de Tarefas 
 - Envio dos avisos e cumprimento de consentimento (LGPD): decidir se o aviso de vencimento é mensagem de serviço (vale para todos) ou só para quem aceitou marketing.
 - Bônus de aniversário (500 pontos) ainda não implementado.
 - Não testado contra PostgreSQL real.
+
+## Auditoria de 2026-11-11
+Corrigido:
+- **Ordem de travas:** `expireLot` agora trava o hóspede antes dos lotes, como o check-out e a revisão de nível. Regra para todo fluxo futuro (em especial o resgate): **primeiro o hóspede, depois os lotes**, para não gerar impasse (deadlock).
+- **Revisão de nível sem leitura velha:** os pontos-base são somados dentro da transação, depois da trava do hóspede; um check-out simultâneo já aparece no cálculo.
+- **Nível vencido no check-out:** se a validade do nível acabou e a rotina ainda não rodou (ou falhou), o check-out não dá o multiplicador do nível vencido; vale o que o hóspede atinge pelos pontos-base dos últimos 12 meses.
+- **Robustez:** cada etapa é isolada (falha ao carregar lotes não impede a revisão de nível); erros são registrados com etapa, id (UUID) e código, sem mensagens do banco nem dados pessoais; o `$disconnect` do script não pode mais gerar erro solto.
+- **LGPD:** hóspede anonimizado não recebe aviso de vencimento (os pontos dele vencem normalmente) e não entra na revisão de nível.
+- **Datas:** uma única função `addMonths` (`src/domain/time.ts`) que não estoura o fim do mês (31/01 + 1 mês = 28/02).
+
+Regras para o resgate (a implementar):
+1. Saldo disponível = lotes com `remaining > 0` e `expiresAt > agora` (usar `consumeFifo`), **nunca** a soma simples de `points`, que ainda inclui pontos vencidos até a rotina rodar.
+2. Estorno (`REVERSAL`) de crédito cujo lote já expirou: regra a definir, para não deixar saldo negativo.
+3. Lotes sem `expiresAt` nunca vencem; todo crédito, inclusive ajuste manual, deve ter validade.
+
+Observações: o aviso já gravado mantém o total antigo se outro lote entrar na janela com o mesmo primeiro vencimento. Antes do primeiro uso em produção, conferir hóspedes com nível acima do Bronze e validade nula (ex.: dados de teste), pois serão revisados e podem ser rebaixados na primeira rodada.

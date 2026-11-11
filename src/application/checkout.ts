@@ -3,6 +3,7 @@ import { loyaltyConfig, type LoyaltyConfig } from '../config/loyalty';
 import { calculateStayPoints, totalPoints } from '../domain/points/earn';
 import { expirationDate } from '../domain/points/expiry';
 import { isDirectChannel, nightsBetween, type StayInput } from '../domain/stays/stay';
+import { addMonths } from '../domain/time';
 import { resolveTier } from '../domain/tiers/tier';
 import {
   StayAlreadyProcessedError,
@@ -20,11 +21,6 @@ export interface LoyaltyDeps {
   now?: () => Date;
 }
 
-const addMonths = (d: Date, months: number) => {
-  const r = new Date(d);
-  r.setUTCMonth(r.getUTCMonth() + months);
-  return r;
-};
 
 /** Registra uma estadia lançada manualmente (recepção). Ainda não gera pontos. */
 export async function registerStay(deps: LoyaltyDeps, input: StayInput): Promise<{ id: string; nights: number }> {
@@ -61,7 +57,11 @@ export function planCheckout(
   cfg: LoyaltyConfig,
 ): { commit: CheckoutCommit; earned: number; tier: string; upgraded: boolean } {
   const { stay, guest } = data;
-  const tier = cfg.tiers.find((t) => t.rank === guest.tierRank) ?? cfg.tiers[0];
+  const storedTier = cfg.tiers.find((t) => t.rank === guest.tierRank) ?? cfg.tiers[0];
+  // Nível com validade vencida (a rotina noturna ainda não rebaixou, ou falhou): vale o que o
+  // hóspede realmente atinge pelos pontos-base dos últimos 12 meses, e não o nível guardado.
+  const expired = storedTier.rank > 0 && (!guest.tierValidUntil || guest.tierValidUntil <= now);
+  const tier = expired ? resolveTier(qualifyingBefore, cfg) : storedTier;
   const lines = calculateStayPoints({ charges: data.charges, isDirect: stay.isDirect }, tier, cfg);
   const expiresAt = expirationDate(now, cfg);
 
@@ -107,8 +107,8 @@ export function planCheckout(
 
   const qualifyingNow = qualifyingBefore + lines.reduce((s, l) => s + l.qualifyingPts, 0);
   const reached = resolveTier(qualifyingNow, cfg);
-  const upgraded = reached.rank > tier.rank;
-  const maintained = !upgraded && tier.rank > 0 && qualifyingNow >= tier.minQualifyingPts;
+  const upgraded = reached.rank > storedTier.rank;
+  const maintained = !upgraded && storedTier.rank > 0 && qualifyingNow >= storedTier.minQualifyingPts;
 
   return {
     commit: {
@@ -122,6 +122,7 @@ export function planCheckout(
     },
     earned,
     tier: (upgraded ? reached : tier).name,
+    // Observação: se o nível guardado está vencido e o hóspede não o mantém, quem rebaixa é a rotina noturna.
     upgraded,
   };
 }

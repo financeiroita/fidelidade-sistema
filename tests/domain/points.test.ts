@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { loyaltyConfig as cfg } from '../../src/config/loyalty';
 import { calculateStayPoints, totalPoints } from '../../src/domain/points/earn';
 import { consumeFifo, expirationDate, findExpired } from '../../src/domain/points/expiry';
+import { addMonths } from '../../src/domain/time';
 import { resolveTier } from '../../src/domain/tiers/tier';
 
 const bronze = cfg.tiers[0];
@@ -65,6 +66,11 @@ describe('níveis', () => {
 
 describe('expiração', () => {
   const now = new Date('2026-06-01T00:00:00Z');
+  it('soma meses sem estourar o fim do mês', () => {
+    expect(addMonths(new Date('2026-01-31T00:00:00Z'), 1).toISOString()).toBe('2026-02-28T00:00:00.000Z');
+    expect(addMonths(new Date('2026-02-28T00:00:00Z'), 12).toISOString()).toBe('2027-02-28T00:00:00.000Z');
+    expect(addMonths(new Date('2028-02-29T00:00:00Z'), 24).toISOString()).toBe('2030-02-28T00:00:00.000Z');
+  });
   it('expira em 24 meses', () => {
     expect(expirationDate(new Date('2024-06-01T00:00:00Z'), cfg).toISOString()).toBe('2026-06-01T00:00:00.000Z');
   });

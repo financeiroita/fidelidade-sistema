@@ -10,12 +10,19 @@ export class InMemoryMaintenanceRepository implements MaintenanceRepository {
   constructor(
     private readonly stays: InMemoryStayRepository,
     private readonly guests: InMemoryGuestRepository,
+    private readonly clock: () => Date = () => new Date(),
   ) {}
 
   async loadActiveLots(): Promise<LotRow[]> {
     return this.stays.transactions
       .filter((t) => t.remaining > 0 && t.expiresAt)
-      .map((t) => ({ id: t.id, guestId: t.guestId, remaining: t.remaining, expiresAt: t.expiresAt }));
+      .map((t) => ({
+        id: t.id,
+        guestId: t.guestId,
+        remaining: t.remaining,
+        expiresAt: t.expiresAt as Date,
+        guestActive: true,
+      }));
   }
 
   async expireLot(item: ExpirationPlan): Promise<boolean> {
@@ -24,6 +31,7 @@ export class InMemoryMaintenanceRepository implements MaintenanceRepository {
     const key = `expire:${item.lotId}`;
     if (this.stays.transactions.some((t) => t.idempotencyKey === key)) return false;
     lot.remaining = 0;
+    // Igual ao banco: o lançamento de expiração não tem validade nem conta para o nível.
     this.stays.transactions.push({
       id: `expire-${item.lotId}`,
       guestId: item.guestId,
@@ -31,9 +39,8 @@ export class InMemoryMaintenanceRepository implements MaintenanceRepository {
       points: -item.points,
       qualifyingPts: 0,
       remaining: 0,
-      expiresAt: lot.expiresAt,
       idempotencyKey: key,
-      createdAt: new Date(),
+      createdAt: this.clock(),
     });
     return true;
   }
@@ -42,18 +49,20 @@ export class InMemoryMaintenanceRepository implements MaintenanceRepository {
     return this.guests.guests
       .map((g) => ({ guestId: g.id, t: this.stays.tiers.get(g.id) }))
       .filter(({ t }) => t && t.rank > 0 && (!t.validUntil || t.validUntil <= now))
-      .map(({ guestId, t }) => ({ guestId, tierRank: t!.rank }));
+      .map(({ guestId }) => ({ guestId }));
   }
 
-  qualifyingPointsSince(guestId: string, since: Date) {
-    return this.stays.qualifyingPointsSince(guestId, since);
-  }
-
-  async applyTierReview(guestId: string, newRank: number, validUntil: Date | null, now: Date) {
+  async reviewTier(
+    guestId: string,
+    now: Date,
+    since: Date,
+    decide: (qualifyingPts: number) => { newRank: number; validUntil: Date | null },
+  ) {
     const t = this.stays.tiers.get(guestId);
-    if (t?.validUntil && t.validUntil > now) return false;
-    this.stays.tiers.set(guestId, { rank: newRank, validUntil: validUntil ?? undefined });
-    return true;
+    if (!t || t.rank === 0 || (t.validUntil && t.validUntil > now)) return null;
+    const plan = decide(await this.stays.qualifyingPointsSince(guestId, since));
+    this.stays.tiers.set(guestId, { rank: plan.newRank, validUntil: plan.validUntil ?? undefined });
+    return { previousRank: t.rank, newRank: plan.newRank };
   }
 
   async saveNotices(notices: NoticePlan[]) {
