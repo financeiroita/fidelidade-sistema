@@ -17,12 +17,14 @@ import {
   getStatement,
   listRewards,
   redeem,
+  updateReward,
   type RedemptionAction,
   type RewardDeps,
 } from '../application/redemptions';
-import { redeemSchema, rewardInputSchema, useSchema } from '../domain/rewards/reward';
+import { redeemSchema, rewardInputSchema, rewardPatchSchema, useSchema } from '../domain/rewards/reward';
 import {
   InsufficientPointsError,
+  InvalidStayError,
   InvalidTransitionError,
   RedemptionNotFoundError,
   RequestIdReusedError,
@@ -115,6 +117,7 @@ export function buildApp(deps: AppDeps, opts: { logger?: boolean } = {}): Fastif
         return reply.code(409).send({ error: 'insufficient_points', available: e.available });
       }
       if (e instanceof InvalidTransitionError) return reply.code(409).send({ error: 'invalid_transition' });
+      if (e instanceof InvalidStayError) return reply.code(422).send({ error: 'invalid_stay' });
       if (e instanceof RequestIdReusedError) return reply.code(409).send({ error: 'request_id_reused' });
       throw e;
     };
@@ -123,6 +126,17 @@ export function buildApp(deps: AppDeps, opts: { logger?: boolean } = {}): Fastif
       const parsed = rewardInputSchema.safeParse(req.body);
       if (!parsed.success) return reply.code(422).send(validationError(parsed.error.issues));
       return reply.code(201).send(await createReward(deps.rewards, parsed.data));
+    });
+
+    internal.patch<{ Params: { id: string } }>('/rewards/:id', async (req, reply) => {
+      if (!isUuid(req.params.id)) return reply.code(404).send({ error: 'reward_not_available' });
+      const parsed = rewardPatchSchema.safeParse(req.body);
+      if (!parsed.success) return reply.code(422).send(validationError(parsed.error.issues));
+      try {
+        return reply.send(await updateReward(deps.rewards, req.params.id, parsed.data));
+      } catch (e) {
+        return rewardError(e, reply);
+      }
     });
 
     internal.post('/redemptions', async (req, reply) => {
@@ -163,7 +177,12 @@ export function buildApp(deps: AppDeps, opts: { logger?: boolean } = {}): Fastif
       async (req, reply) => {
         if (!isUuid(req.params.id)) return reply.code(404).send({ error: 'guest_not_found' });
         const limit = Math.min(200, Math.max(1, Number.parseInt(req.query.limit ?? '50', 10) || 50));
-        return reply.send(await getStatement(deps.rewards, req.params.id, limit));
+        try {
+          await getBalance(deps.rewards, req.params.id); // 404 se o hóspede não existe
+          return reply.send(await getStatement(deps.rewards, req.params.id, limit));
+        } catch (e) {
+          return rewardError(e, reply);
+        }
       },
     );
 

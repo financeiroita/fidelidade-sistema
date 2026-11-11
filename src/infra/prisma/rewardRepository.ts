@@ -5,6 +5,7 @@ import {
   type RedemptionRow,
   type RedemptionStatus,
   type RewardGuest,
+  type RewardPatch,
   type RewardRepository,
   type RewardRow,
   type RewardType,
@@ -122,10 +123,25 @@ function makeUow(tx: Tx): RewardUow {
         data: { status, stayId: extra?.stayId, usedAt: extra?.usedAt },
       });
     },
-    async cancelRedemption(r) {
+    async cancelRedemption(r, now) {
+      const lots = await tx.pointsTransaction.findMany({
+        where: { id: { in: r.lots.map((l) => l.lotId) } },
+        select: { id: true, expiresAt: true },
+      });
+      const expiresAt = new Map(lots.map((l) => [l.id, l.expiresAt]));
+      const lapsed: Array<{ lotId: string; points: number }> = [];
+
       for (const l of r.lots) {
-        await tx.pointsTransaction.update({ where: { id: l.lotId }, data: { remaining: { increment: l.points } } });
+        const exp = expiresAt.get(l.lotId);
+        if (exp && exp > now) {
+          // Devolve ao lote, mas nunca acima do que o lote creditou (checado no próprio UPDATE).
+          const n = await tx.$executeRaw`UPDATE "PointsTransaction" SET remaining = remaining + ${l.points} WHERE id = ${l.lotId} AND remaining + ${l.points} <= points`;
+          if (n !== 1) throw new Error('Lote incoerente ao devolver pontos');
+        } else {
+          lapsed.push(l); // lote já venceu: não volta a ter saldo
+        }
       }
+
       await tx.pointsTransaction.create({
         data: {
           guestId: r.guestId,
@@ -137,7 +153,24 @@ function makeUow(tx: Tx): RewardUow {
           note: 'Resgate cancelado: pontos devolvidos',
         },
       });
+      // A parte devolvida a lote já vencido é lançada como vencida na hora (sem prazo extra).
+      for (const l of lapsed) {
+        await tx.pointsTransaction.create({
+          data: {
+            guestId: r.guestId,
+            type: 'EXPIRE',
+            points: -l.points,
+            remaining: 0,
+            redemptionId: r.id,
+            idempotencyKey: `redeem-cancel-expire:${r.id}:${l.lotId}`,
+            note: 'Pontos vencidos (resgate cancelado após o vencimento)',
+          },
+        });
+      }
       await tx.redemption.update({ where: { id: r.id }, data: { status: 'CANCELLED' } });
+    },
+    async stayBelongsToGuest(stayId, guestId) {
+      return (await tx.stay.count({ where: { id: stayId, guestId } })) > 0;
     },
   };
 }
@@ -147,6 +180,15 @@ export class PrismaRewardRepository implements RewardRepository {
 
   async createReward(r: NewReward): Promise<RewardRow> {
     return toReward(await this.prisma.reward.create({ data: r }));
+  }
+
+  async updateReward(id: string, patch: RewardPatch): Promise<RewardRow | null> {
+    try {
+      return toReward(await this.prisma.reward.update({ where: { id }, data: patch }));
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') return null; // não existe
+      throw e;
+    }
   }
 
   async listActiveRewards(): Promise<RewardRow[]> {

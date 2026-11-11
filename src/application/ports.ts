@@ -160,6 +160,8 @@ export class InsufficientPointsError extends Error {
   }
 }
 export class RedemptionNotFoundError extends Error {}
+/** A estadia informada não existe ou não é do hóspede. */
+export class InvalidStayError extends Error {}
 export class InvalidTransitionError extends Error {}
 /** O mesmo requestId já foi usado por outro hóspede ou prêmio. */
 export class RequestIdReusedError extends Error {}
@@ -175,12 +177,21 @@ export interface RewardUow {
   /** Grava o resgate (PENDING), abate os lotes e lança o débito REDEEM no extrato. */
   createRedemption(r: NewRedemption, rewardName: string): Promise<void>;
   setStatus(id: string, status: RedemptionStatus, extra?: { stayId?: string; usedAt?: Date }): Promise<void>;
-  /** Devolve o saldo aos lotes de origem, lança REVERSAL e marca CANCELLED. */
-  cancelRedemption(r: RedemptionRow): Promise<void>;
+  /**
+   * Cancela e devolve os pontos: lote ainda válido recebe o saldo de volta; lote já vencido não
+   * (a parte dele é lançada como vencida na hora, sem dar prazo extra). Lança REVERSAL e marca CANCELLED.
+   */
+  cancelRedemption(r: RedemptionRow, now: Date): Promise<void>;
+  /** A estadia existe e é deste hóspede? */
+  stayBelongsToGuest(stayId: string, guestId: string): Promise<boolean>;
 }
+
+export type RewardPatch = Partial<Omit<NewReward, 'type'>> & { active?: boolean };
 
 export interface RewardRepository {
   createReward(r: NewReward): Promise<RewardRow>;
+  /** Corrige ou desativa um prêmio. Resgates já feitos não mudam. Devolve null se não existir. */
+  updateReward(id: string, patch: RewardPatch): Promise<RewardRow | null>;
   listActiveRewards(): Promise<RewardRow[]>;
   findRedemptionGuest(redemptionId: string): Promise<string | null>;
   /** Trava o hóspede e executa tudo numa transação. Se `fn` lançar erro, nada é gravado. */

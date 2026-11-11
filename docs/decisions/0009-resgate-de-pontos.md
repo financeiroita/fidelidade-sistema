@@ -9,7 +9,7 @@
 - **Saldo utilizável**: só lotes com saldo e ainda dentro da validade; pontos vencidos que a rotina noturna ainda não tirou não contam. Os pontos que vencem antes saem primeiro (FIFO), e o resgate guarda de quais lotes saíram.
 - **Prêmio por nível**: vale o nível guardado; se a validade do nível acabou (rotina ainda não rodou), conta como nível inicial.
 - **Ciclo**: PENDING → CONFIRMED → USED. Cancelar vale em PENDING e CONFIRMED e devolve os pontos aos lotes de origem (lançamento REVERSAL). Repetir uma ação já feita é inofensivo; usar sem confirmar, ou cancelar o que já foi usado, é recusado (409).
-- **Cancelar depois que o lote venceu**: o saldo volta ao lote, mas lote vencido não é utilizável, e a rotina noturna o expira. O hóspede não ganha prazo com o cancelamento, e o extrato fica coerente (ganho, resgate, devolução, vencimento).
+- **Cancelar depois que o lote venceu** (corrigido na auditoria): a parte devolvida a um lote já vencido não volta a ter saldo; é lançada como vencida na hora (EXPIRE com chave `redeem-cancel-expire:<resgate>:<lote>`), sem dar prazo extra. A primeira versão deixava o saldo no lote e dependia da rotina noturna, o que criava saldo fantasma quando o lote já tinha recebido o lançamento de vencimento.
 - **Concorrência**: tudo roda na transação do hóspede, com o hóspede travado primeiro e os lotes depois (mesma ordem do check-out e da rotina noturna). Dois pedidos simultâneos que não cabem no saldo: só um passa.
 - **Saldo e extrato** (internos): `GET /guests/:id/balance` (disponível, razão e boas-vindas pendentes) e `GET /guests/:id/statement?limit=`.
 
@@ -17,3 +17,18 @@
 - Não há autenticação do próprio hóspede: o resgate é feito pela recepção ou por um sistema com a chave interna. Um app/site do hóspede exige login de hóspede (decisão futura).
 - Não há validade do resgate (ex.: prazo para usar o voucher) nem estoque/limite por prêmio.
 - Não testado contra PostgreSQL real.
+
+## Auditoria de 2026-11-11
+Corrigido:
+- **Saldo fantasma no cancelamento** (crítico): ver "Cancelar depois que o lote venceu". Testado com lote vencido antes e depois da rotina noturna, e com dois lotes.
+- Devolução ao lote só até o que o lote creditou (checado no próprio UPDATE); restrições de banco em `prisma/constraints.sql` (saldo nunca negativo nem acima do creditado, pontos positivos). **Aplicar o arquivo depois da primeira migração.**
+- `use` só aceita estadia que existe e é do mesmo hóspede (422 `invalid_stay`).
+- `PATCH /rewards/:id` corrige preço/nome/nível ou retira o prêmio (`active: false`); resgates já feitos continuam seguindo o ciclo.
+- A hora do pedido é lida depois da trava do hóspede (lote que venceu na espera não é consumido); extrato de hóspede inexistente dá 404; índices de apoio e unicidade (resgate, lote).
+- A memória valida antes de gravar (como o banco).
+
+Em aberto:
+1. **Quem fez o quê:** a chave interna é única e compartilhada; falta ator por operador (`x-actor` ou chave por pessoa) gravado em resgate, confirmação e cancelamento. Cancelar devolve pontos, então isso deve vir antes da produção (junto com o login por funcionário do ADR 0007).
+2. Pedido repetido de um resgate cancelado devolve o resgate cancelado (não cria outro); quem chama deve olhar o `status`. Um novo pedido exige novo `requestId`.
+3. Lote sem validade (`expiresAt` nulo) nunca é utilizável nem vence; nenhum fluxo cria isso hoje.
+4. Testes com PostgreSQL real das travas, do P2002 e das restrições SQL.

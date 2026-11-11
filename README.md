@@ -51,3 +51,5 @@ Exigem o cabeçalho `x-api-key` com o valor de `INTERNAL_API_KEY`.
 - `GET /rewards` (público): catálogo ativo. `POST /rewards` (interno): cadastra prêmio.
 - `POST /redemptions` e `POST /redemptions/:id/{confirm,use,cancel}` (internos): resgate e ciclo.
 - `GET /guests/:id/balance` e `GET /guests/:id/statement` (internos): saldo e extrato.
+
+Depois da primeira migração, aplique também as restrições de integridade: `psql "$DATABASE_URL" -f prisma/constraints.sql`.

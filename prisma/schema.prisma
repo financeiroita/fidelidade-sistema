@@ -198,6 +198,7 @@ model PointsTransaction {
 
   @@index([guestId, createdAt])
   @@index([guestId, expiresAt])
+  @@index([redemptionId])
 }
 
 // De quais lotes de crédito saíram os pontos de um resgate (para devolver ao cancelar).
@@ -209,7 +210,8 @@ model RedemptionLot {
   lot          PointsTransaction @relation(fields: [lotId], references: [id])
   points       Int
 
-  @@index([redemptionId])
+  @@unique([redemptionId, lotId])
+  @@index([lotId])
 }
 
 // Fila de avisos de pontos a vencer. A rotina noturna grava; o envio (e-mail/WhatsApp) lê daqui.
@@ -236,6 +238,8 @@ model Reward {
   minTierRank Int          @default(0)
   active      Boolean      @default(true)
   redemptions Redemption[]
+
+  @@index([active, pointsCost])
 }
 
 model Redemption {

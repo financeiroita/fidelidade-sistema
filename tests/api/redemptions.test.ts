@@ -62,6 +62,20 @@ describe('catálogo', () => {
     expect(Object.keys(list[0]).sort()).toEqual(['description', 'id', 'minTierRank', 'name', 'pointsCost', 'type']);
   });
 
+  it('corrigir preço e retirar do catálogo, sem mexer em resgates já feitos', async () => {
+    const r = await newReward({ pointsCost: 5000 });
+    const fixed = await ctx.app.inject({ method: 'PATCH', url: `/rewards/${r.id}`, headers, payload: { pointsCost: 4000 } });
+    expect(fixed.json()).toMatchObject({ pointsCost: 4000, active: true });
+    expect((await ctx.app.inject({ method: 'GET', url: '/rewards' })).json()[0].pointsCost).toBe(4000);
+    await ctx.app.inject({ method: 'PATCH', url: `/rewards/${r.id}`, headers, payload: { active: false } });
+    expect((await ctx.app.inject({ method: 'GET', url: '/rewards' })).json()).toEqual([]);
+    const bad = (payload: object, id = r.id) => ctx.app.inject({ method: 'PATCH', url: `/rewards/${id}`, headers, payload });
+    expect((await bad({})).statusCode).toBe(422);
+    expect((await bad({ pointsCost: -1 })).statusCode).toBe(422);
+    expect((await bad({ active: false }, '7b0c4b7e-0000-4000-8000-000000000000')).statusCode).toBe(404);
+    expect((await ctx.app.inject({ method: 'PATCH', url: `/rewards/${r.id}`, payload: { active: true } })).statusCode).toBe(401);
+  });
+
   it('valida o cadastro do prêmio', async () => {
     expect((await post('/rewards', { name: 'X', type: 'SPA', pointsCost: 0 })).statusCode).toBe(422);
     expect((await post('/rewards', { name: 'Prêmio', type: 'CARRO', pointsCost: 10 })).statusCode).toBe(422);
@@ -178,12 +192,53 @@ describe('ciclo do resgate', () => {
   }
 
   it('confirmar e usar, repetindo sem efeito; usar sem confirmar é recusado', async () => {
-    const { r } = await pending();
+    const { g, r } = await pending();
+    const stay = (
+      await post('/stays', { guestId: g.id, channel: 'PHONE', checkIn: '2026-02-20', checkOut: '2026-02-22', externalRef: 'U-1', charges: [] })
+    ).json();
     expect((await post(`/redemptions/${r.id}/use`)).statusCode).toBe(409);
     expect((await post(`/redemptions/${r.id}/confirm`)).json().status).toBe('CONFIRMED');
     expect((await post(`/redemptions/${r.id}/confirm`)).json().status).toBe('CONFIRMED');
-    const used = await post(`/redemptions/${r.id}/use`, { stayId: '7b0c4b7e-0000-4000-8000-0000000000aa' });
-    expect(used.json()).toMatchObject({ status: 'USED', stayId: '7b0c4b7e-0000-4000-8000-0000000000aa' });
+    const used = await post(`/redemptions/${r.id}/use`, { stayId: stay.id });
+    expect(used.json()).toMatchObject({ status: 'USED', stayId: stay.id });
+    expect((await post(`/redemptions/${r.id}/use`)).json().status).toBe('USED');
+  });
+
+  it('usar com estadia inexistente ou de outro hóspede é recusado (422)', async () => {
+    const { r } = await pending();
+    const other = await newGuest({ fullName: 'Bia Lima', email: 'bia@x.com', document: '111.444.777-35' });
+    const foreign = (
+      await post('/stays', { guestId: other.id, channel: 'PHONE', checkIn: '2026-02-20', checkOut: '2026-02-22', externalRef: 'U-2', charges: [] })
+    ).json();
+    await post(`/redemptions/${r.id}/confirm`);
+    expect((await post(`/redemptions/${r.id}/use`, { stayId: foreign.id })).json()).toEqual({ error: 'invalid_stay' });
+    expect((await post(`/redemptions/${r.id}/use`, { stayId: '7b0c4b7e-0000-4000-8000-0000000000aa' })).statusCode).toBe(422);
+  });
+
+  it('cancelar e usar ao mesmo tempo: só uma das ações vale e o saldo fica coerente', async () => {
+    const { g, r } = await pending();
+    await post(`/redemptions/${r.id}/confirm`);
+    const [a, b] = await Promise.all([post(`/redemptions/${r.id}/cancel`), post(`/redemptions/${r.id}/use`)]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 409]);
+    const cancelled = a.statusCode === 200;
+    expect((await balance(g.id)).available).toBe(cancelled ? 2000 : 500);
+  });
+
+  it('o mesmo pedido repetido depois de cancelar devolve o resgate cancelado, sem gastar de novo', async () => {
+    const g = await newGuest();
+    await earn(g.id, 2000);
+    const reward = await newReward();
+    const first = (await redeem(g.id, reward.id, 'pedido-repetido-01')).json();
+    await post(`/redemptions/${first.id}/cancel`);
+    const again = await redeem(g.id, reward.id, 'pedido-repetido-01');
+    expect(again.json()).toMatchObject({ id: first.id, status: 'CANCELLED', replay: true });
+    expect((await balance(g.id)).available).toBe(2000);
+  });
+
+  it('prêmio retirado do catálogo depois do pedido ainda pode ser confirmado e usado', async () => {
+    const { r } = await pending();
+    await ctx.app.inject({ method: 'PATCH', url: `/rewards/${r.rewardId}`, headers, payload: { active: false } });
+    expect((await post(`/redemptions/${r.id}/confirm`)).json().status).toBe('CONFIRMED');
     expect((await post(`/redemptions/${r.id}/use`)).json().status).toBe('USED');
   });
 
@@ -202,17 +257,45 @@ describe('ciclo do resgate', () => {
     expect((await post(`/redemptions/${r.id}/cancel`)).statusCode).toBe(409);
   });
 
-  it('cancelar depois de o lote vencer não devolve saldo utilizável; a rotina o expira sem perda dupla', async () => {
+  it('cancelar depois de o lote vencer não devolve saldo: o vencimento é lançado na hora e o extrato fecha', async () => {
     const g = await newGuest();
     await earn(g.id, 1000); // vence 2028-03-01
     const reward = await newReward({ pointsCost: 1000 });
     const r = (await redeem(g.id, reward.id)).json();
     clock = new Date('2028-03-05T00:00:00Z');
     await post(`/redemptions/${r.id}/cancel`);
-    expect(await balance(g.id)).toMatchObject({ available: 0 }); // lote vencido não é utilizável
+    // +1000 ganho, -1000 resgate, +1000 devolução, -1000 vencido
+    expect(await balance(g.id)).toMatchObject({ available: 0, ledger: 0 });
     const maint = new InMemoryMaintenanceRepository(ctx.stays, ctx.guests, () => clock);
-    expect(await runNightly({ repo: maint, now: () => clock })).toMatchObject({ expiredLots: 1, expiredPoints: 1000 });
-    expect((await balance(g.id)).ledger).toBe(0); // +1000 ganho, -1000 resgate, +1000 devolução, -1000 vencido
+    expect(await runNightly({ repo: maint, now: () => clock })).toMatchObject({ expiredLots: 0, errors: 0 });
+  });
+
+  it('cancelar depois que a rotina já venceu o saldo restante do lote não deixa saldo fantasma', async () => {
+    const g = await newGuest();
+    await earn(g.id, 1000); // vence 2028-03-01
+    const reward = await newReward({ pointsCost: 400 });
+    const r = (await redeem(g.id, reward.id)).json(); // lote fica com 600
+    clock = new Date('2028-03-02T00:00:00Z');
+    const maint = new InMemoryMaintenanceRepository(ctx.stays, ctx.guests, () => clock);
+    expect(await runNightly({ repo: maint, now: () => clock })).toMatchObject({ expiredLots: 1, expiredPoints: 600 });
+    await post(`/redemptions/${r.id}/cancel`);
+    // +1000 -400 -600 (vencido) +400 (devolução) -400 (vencido no cancelamento) = 0
+    expect(await balance(g.id)).toMatchObject({ available: 0, ledger: 0 });
+    const next = await runNightly({ repo: maint, now: () => clock });
+    expect(next).toMatchObject({ expiredLots: 0, errors: 0 });
+    expect(ctx.stays.transactions.every((t) => t.remaining === 0)).toBe(true);
+  });
+
+  it('resgate com dois lotes: o vencido some e o válido volta inteiro no cancelamento', async () => {
+    const g = await newGuest();
+    await earn(g.id, 1000); // vence 2028-03-01
+    clock = new Date('2026-09-01T12:00:00Z');
+    await earn(g.id, 1000); // vence 2028-09-01
+    const reward = await newReward({ pointsCost: 1500 });
+    const r = (await redeem(g.id, reward.id)).json(); // 1000 do 1º lote e 500 do 2º
+    clock = new Date('2028-03-05T00:00:00Z');
+    await post(`/redemptions/${r.id}/cancel`);
+    expect(await balance(g.id)).toMatchObject({ available: 1000, ledger: 1000 });
   });
 
   it('id inválido ou inexistente: 404', async () => {
@@ -231,10 +314,13 @@ describe('saldo e extrato', () => {
     expect((await get('/guests/lixo/balance')).statusCode).toBe(404);
   });
 
-  it('o extrato respeita o limite', async () => {
+  it('o extrato respeita o limite, aceita valores estranhos sem quebrar e dá 404 para hóspede inexistente', async () => {
     const g = await newGuest();
     await earn(g.id, 1000);
     await earn(g.id, 500);
     expect((await get(`/guests/${g.id}/statement?limit=1`)).json()).toHaveLength(1);
+    expect((await get(`/guests/${g.id}/statement?limit=-5`)).json()).toHaveLength(1);
+    expect((await get(`/guests/${g.id}/statement?limit=abc`)).statusCode).toBe(200);
+    expect((await get('/guests/7b0c4b7e-0000-4000-8000-000000000000/statement')).statusCode).toBe(404);
   });
 });

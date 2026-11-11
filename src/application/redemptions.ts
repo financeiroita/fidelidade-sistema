@@ -4,12 +4,14 @@ import type { RedeemInput, RewardInput } from '../domain/rewards/reward';
 import {
   GuestNotFoundError,
   InsufficientPointsError,
+  InvalidStayError,
   InvalidTransitionError,
   RedemptionNotFoundError,
   RewardNotAvailableError,
   TierTooLowError,
   RequestIdReusedError,
   type RedemptionRow,
+  type RewardPatch,
   type RewardRepository,
   type RewardRow,
 } from './ports';
@@ -29,6 +31,12 @@ const newCode = () => {
 export const createReward = (deps: RewardDeps, input: RewardInput): Promise<RewardRow> =>
   deps.repo.createReward(input);
 
+export async function updateReward(deps: RewardDeps, id: string, patch: RewardPatch): Promise<RewardRow> {
+  const r = await deps.repo.updateReward(id, patch);
+  if (!r) throw new RewardNotAvailableError();
+  return r;
+}
+
 export const listRewards = (deps: RewardDeps) => deps.repo.listActiveRewards();
 
 /**
@@ -39,8 +47,9 @@ export async function redeem(
   deps: RewardDeps,
   input: RedeemInput,
 ): Promise<{ redemption: RedemptionRow; replay: boolean }> {
-  const now = (deps.now ?? (() => new Date()))();
   return deps.repo.inGuestTransaction(input.guestId, async (uow) => {
+    // Lido já com o hóspede travado: um lote que venceu durante a espera não é consumido.
+    const now = (deps.now ?? (() => new Date()))();
     const existing = await uow.getRedemptionByRequest(input.requestId);
     if (existing) {
       if (existing.guestId === input.guestId && existing.rewardId === input.rewardId) {
@@ -90,11 +99,11 @@ export async function changeRedemption(
   action: RedemptionAction,
   opts: { stayId?: string } = {},
 ): Promise<RedemptionRow> {
-  const now = (deps.now ?? (() => new Date()))();
   const guestId = await deps.repo.findRedemptionGuest(id);
   if (!guestId) throw new RedemptionNotFoundError();
 
   return deps.repo.inGuestTransaction(guestId, async (uow) => {
+    const now = (deps.now ?? (() => new Date()))();
     const r = await uow.getRedemption(id); // relido sob a trava
     if (!r) throw new RedemptionNotFoundError();
 
@@ -107,12 +116,13 @@ export async function changeRedemption(
     if (action === 'use') {
       if (r.status === 'USED') return r;
       if (r.status !== 'CONFIRMED') throw new InvalidTransitionError();
+      if (opts.stayId && !(await uow.stayBelongsToGuest(opts.stayId, r.guestId))) throw new InvalidStayError();
       await uow.setStatus(id, 'USED', { stayId: opts.stayId, usedAt: now });
       return { ...r, status: 'USED', stayId: opts.stayId ?? null };
     }
     if (r.status === 'CANCELLED') return r;
     if (r.status === 'USED') throw new InvalidTransitionError();
-    await uow.cancelRedemption(r);
+    await uow.cancelRedemption(r, now);
     return { ...r, status: 'CANCELLED' };
   });
 }

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   NewReward,
   RedemptionRow,
+  RewardPatch,
   RewardRepository,
   RewardRow,
   RewardUow,
@@ -29,6 +30,14 @@ export class InMemoryRewardRepository implements RewardRepository {
     const row: RewardRow = { id: randomUUID(), active: true, ...r };
     this.rewards.set(row.id, row);
     return row;
+  }
+
+  async updateReward(id: string, patch: RewardPatch) {
+    const cur = this.rewards.get(id);
+    if (!cur) return null;
+    const next = { ...cur, ...patch };
+    this.rewards.set(id, next);
+    return next;
   }
 
   async listActiveRewards() {
@@ -89,12 +98,13 @@ export class InMemoryRewardRepository implements RewardRepository {
           .filter((t) => t.guestId === guestId && t.remaining > 0 && t.expiresAt && t.expiresAt > now)
           .map((t) => ({ id: t.id, remaining: t.remaining, expiresAt: t.expiresAt as Date })),
       createRedemption: async (r, rewardName) => {
-        this.redemptions.set(r.id, { ...r, status: 'PENDING', stayId: null });
+        // Valida tudo antes de gravar: a memória não desfaz escritas parciais como o banco.
         for (const l of r.lots) {
           const lot = txs.find((t) => t.id === l.lotId);
           if (!lot || lot.remaining < l.points) throw new Error('Saldo do lote mudou durante o resgate');
-          lot.remaining -= l.points;
         }
+        for (const l of r.lots) txs.find((t) => t.id === l.lotId)!.remaining -= l.points;
+        this.redemptions.set(r.id, { ...r, status: 'PENDING', stayId: null });
         txs.push({
           id: randomUUID(),
           guestId: r.guestId,
@@ -112,10 +122,12 @@ export class InMemoryRewardRepository implements RewardRepository {
         const r = this.redemptions.get(id);
         if (r) this.redemptions.set(id, { ...r, status, stayId: extra?.stayId ?? r.stayId });
       },
-      cancelRedemption: async (r) => {
+      cancelRedemption: async (r, now) => {
+        const lapsed: Array<{ lotId: string; points: number }> = [];
         for (const l of r.lots) {
           const lot = txs.find((t) => t.id === l.lotId);
-          if (lot) lot.remaining += l.points;
+          if (lot?.expiresAt && lot.expiresAt > now) lot.remaining += l.points;
+          else lapsed.push(l);
         }
         txs.push({
           id: randomUUID(),
@@ -129,8 +141,23 @@ export class InMemoryRewardRepository implements RewardRepository {
           note: 'Resgate cancelado: pontos devolvidos',
           createdAt: this.clock(),
         });
+        for (const l of lapsed) {
+          txs.push({
+            id: randomUUID(),
+            guestId: r.guestId,
+            type: 'EXPIRE',
+            points: -l.points,
+            qualifyingPts: 0,
+            remaining: 0,
+            redemptionId: r.id,
+            idempotencyKey: `redeem-cancel-expire:${r.id}:${l.lotId}`,
+            note: 'Pontos vencidos (resgate cancelado após o vencimento)',
+            createdAt: this.clock(),
+          });
+        }
         this.redemptions.set(r.id, { ...r, status: 'CANCELLED' });
       },
+      stayBelongsToGuest: async (stayId, guestId) => this.stays.stays.get(stayId)?.guestId === guestId,
     };
   }
 }
