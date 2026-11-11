@@ -28,3 +28,5 @@ Em aberto, aguardando decisão do hotel (abuso e LGPD):
 5. **Consentimento**: registrar versão do regulamento e data do consentimento de marketing em separado.
 6. **Chave do HMAC**: exigir segredo aleatório de 32 bytes, guardar versão da chave; avaliar criptografia reversível se o hotel precisar ver o CPF.
 7. Testes de integração do repositório Prisma contra um PostgreSQL real.
+
+> Atualização (ADR 0010): a autenticação das rotas internas foi implementada (login por funcionário, papéis, auditoria) e o limite de requisições por IP foi adicionado ao login, à troca de senha e ao cadastro público. Seguem pendentes: HTTPS e acesso restrito ao site do hotel (CORS), e a proteção contra robôs no cadastro.

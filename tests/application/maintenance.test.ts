@@ -114,6 +114,18 @@ describe('avisos de vencimento', () => {
   });
 });
 
+describe('sessões de login vencidas', () => {
+  it('a rotina apaga as vencidas e mantém as válidas', async () => {
+    const withAuth = new InMemoryMaintenanceRepository(ctx.stays, ctx.guests, () => clock, ctx.authRepo);
+    ctx.authRepo.sessions.set('velha', { operatorId: 'x', expiresAt: new Date('2026-02-28T00:00:00Z') });
+    ctx.authRepo.sessions.set('valida', { operatorId: 'x', expiresAt: new Date('2026-04-01T00:00:00Z') });
+    const r = await runNightly({ repo: withAuth, now: () => clock });
+    expect(r.sessionsPurged).toBe(1);
+    expect(ctx.authRepo.sessions.has('velha')).toBe(false);
+    expect(ctx.authRepo.sessions.has('valida')).toBe(true);
+  });
+});
+
 describe('limites e falhas', () => {
   it('lote que vence exatamente agora expira; 1 ms antes do vencimento, não', async () => {
     const g = await guest();

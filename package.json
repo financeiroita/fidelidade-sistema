@@ -9,6 +9,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "job:nightly": "tsx src/jobs/nightly.ts",
     "operator:create": "tsx src/jobs/createOperator.ts",
+    "operator:unlock": "tsx src/jobs/unlockOperator.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "db:up": "docker compose up -d db",
@@ -23,6 +24,7 @@
     "vitest": "^2.1.0"
   },
   "dependencies": {
+    "@fastify/rate-limit": "^10.3.0",
     "@prisma/client": "^6.0.0",
     "fastify": "^5.12.8",
     "zod": "^3.25.76"

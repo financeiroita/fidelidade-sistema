@@ -5,6 +5,10 @@ import type { ExpirationPlan, LotRow, NoticePlan } from '../../domain/points/mai
 export class PrismaMaintenanceRepository implements MaintenanceRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
+  async purgeExpiredSessions(now: Date): Promise<number> {
+    return (await this.prisma.session.deleteMany({ where: { expiresAt: { lte: now } } })).count;
+  }
+
   async loadActiveLots(): Promise<LotRow[]> {
     const rows = await this.prisma.pointsTransaction.findMany({
       where: { remaining: { gt: 0 }, expiresAt: { not: null } },

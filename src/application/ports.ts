@@ -207,6 +207,8 @@ export interface RewardRepository {
 import type { ExpirationPlan, LotRow, NoticePlan } from '../domain/points/maintenance';
 
 export interface MaintenanceRepository {
+  /** Apaga sessões de login vencidas. Devolve quantas. */
+  purgeExpiredSessions(now: Date): Promise<number>;
   /** Todos os lotes de pontos com saldo. */
   loadActiveLots(): Promise<LotRow[]>;
   /** Zera o lote e grava o lançamento EXPIRE. Devolve false se o lote mudou/já foi tratado. */
@@ -257,6 +259,10 @@ export class DuplicateOperatorError extends Error {}
 export class OperatorNotFoundError extends Error {}
 export class WeakPasswordError extends Error {}
 export class CannotDeactivateSelfError extends Error {}
+/** Desativar este administrador deixaria o sistema sem nenhum administrador ativo. */
+export class LastAdminError extends Error {}
+/** Para trocar a própria senha use a rota própria (que exige a senha atual). */
+export class CannotResetOwnPasswordError extends Error {}
 
 export interface AuthRepository {
   findOperatorByUsername(username: string): Promise<OperatorRow | null>;
@@ -268,6 +274,11 @@ export interface AuthRepository {
   recordLoginSuccess(id: string): Promise<void>;
   setPassword(id: string, passwordHash: string): Promise<void>;
   setActive(id: string, active: boolean): Promise<void>;
+  /**
+   * Desativa com proteção: nunca deixa o sistema sem administrador ativo, nem com dois pedidos
+   * simultâneos (um desativando o outro). Atômico.
+   */
+  deactivateOperatorGuarded(id: string): Promise<'ok' | 'last_admin' | 'not_found'>;
   createSession(s: { tokenHash: string; operatorId: string; expiresAt: Date }): Promise<void>;
   findSession(tokenHash: string): Promise<{ operatorId: string; expiresAt: Date } | null>;
   deleteSession(tokenHash: string): Promise<void>;

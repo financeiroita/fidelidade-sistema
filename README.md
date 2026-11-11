@@ -54,3 +54,5 @@ Exigem `Authorization: Bearer <token>` (token do `POST /auth/login`). Crie o pri
 - `GET /guests/:id/balance` e `GET /guests/:id/statement` (internos): saldo e extrato.
 
 Depois da primeira migração, aplique também as restrições de integridade: `psql "$DATABASE_URL" -f prisma/constraints.sql`.
+
+Se a conta de administrador for desativada ou travada e ninguém mais conseguir entrar: `npm run operator:unlock -- --username SEU_USUARIO`.

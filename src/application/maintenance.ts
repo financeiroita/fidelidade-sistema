@@ -19,6 +19,7 @@ export interface MaintenanceResult {
   noticesCreated: number;
   tierReviews: number;
   tierDowngrades: number;
+  sessionsPurged: number;
   errors: number;
 }
 
@@ -43,6 +44,7 @@ export async function runNightly(deps: MaintenanceDeps): Promise<MaintenanceResu
     noticesCreated: 0,
     tierReviews: 0,
     tierDowngrades: 0,
+    sessionsPurged: 0,
     errors: 0,
   };
   const fail = (step: string, e: unknown, id?: string) => {
@@ -74,6 +76,13 @@ export async function runNightly(deps: MaintenanceDeps): Promise<MaintenanceResu
     result.noticesCreated = await repo.saveNotices(planNotices(stillActive, now, cfg.expiryWarningDays));
   } catch (e) {
     fail('avisos', e);
+  }
+
+  // Sessões de login vencidas
+  try {
+    result.sessionsPurged = await repo.purgeExpiredSessions(now);
+  } catch (e) {
+    fail('limpar-sessoes', e);
   }
 
   // 3) Revisão de nível com validade vencida

@@ -4,6 +4,7 @@ import { PrismaAuditRepository, PrismaAuthRepository } from './infra/prisma/auth
 import { PrismaGuestRepository } from './infra/prisma/guestRepository';
 import { PrismaRewardRepository } from './infra/prisma/rewardRepository';
 import { PrismaStayRepository } from './infra/prisma/stayRepository';
+import { warmUpPasswordHashing } from './infra/security/password';
 
 // Exige tamanho mínimo e variedade de caracteres (rejeita "aaaa...", "1234...").
 const strongSecret = (v: string | undefined, minLen: number): v is string =>
@@ -21,14 +22,21 @@ const app = buildApp(
     signup: { repo: new PrismaGuestRepository(prisma), documentSecret: secret },
     loyalty: { stays: new PrismaStayRepository(prisma) },
     rewards: { repo: new PrismaRewardRepository(prisma) },
-    auth: { repo: new PrismaAuthRepository(prisma), audit: new PrismaAuditRepository(prisma) },
+    auth: {
+      repo: new PrismaAuthRepository(prisma),
+      audit: new PrismaAuditRepository(prisma),
+      // Só o código do erro, nunca dados pessoais.
+      onAuditError: (code) => console.error(JSON.stringify({ at: new Date().toISOString(), event: 'falha-auditoria', code })),
+    },
   },
-  { logger: true },
+  // TRUST_PROXY=true só quando o servidor está atrás de um proxy/balanceador seu (para o IP real no limite).
+  { logger: true, trustProxy: process.env.TRUST_PROXY === 'true' },
 );
 
 const port = Number(process.env.PORT ?? 3000);
 
 async function start() {
+  await warmUpPasswordHashing(); // o 1º login de usuário inexistente não demora o dobro
   // O cadastro precisa do nível inicial (rank 0); sem o seed, falharia com erro 500.
   if (!(await prisma.tier.findUnique({ where: { rank: 0 } }))) {
     console.error('Níveis não encontrados. Rode: npm run db:seed');

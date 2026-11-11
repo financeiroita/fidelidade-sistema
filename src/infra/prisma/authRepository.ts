@@ -47,11 +47,26 @@ export class PrismaAuthRepository implements AuthRepository {
     return rows.map((r) => ({ ...r, role: r.role as Role }));
   }
   async recordLoginFailure(id: string, max: number, lockUntil: Date) {
-    // Um único UPDATE: contagem e trava não se perdem se várias tentativas chegarem juntas.
-    await this.prisma.$executeRaw`UPDATE "Operator" SET
-      "lockedUntil" = CASE WHEN "failedAttempts" + 1 >= ${max} THEN ${lockUntil} ELSE "lockedUntil" END,
-      "failedAttempts" = CASE WHEN "failedAttempts" + 1 >= ${max} THEN 0 ELSE "failedAttempts" + 1 END
-      WHERE id = ${id}`;
+    // O incremento é atômico no banco (nenhuma tentativa simultânea se perde); quem passar do limite trava.
+    const o = await this.prisma.operator.update({
+      where: { id },
+      data: { failedAttempts: { increment: 1 } },
+      select: { failedAttempts: true },
+    });
+    if (o.failedAttempts >= max) {
+      await this.prisma.operator.update({ where: { id }, data: { lockedUntil: lockUntil, failedAttempts: 0 } });
+    }
+  }
+  async deactivateOperatorGuarded(id: string) {
+    return this.prisma.$transaction(async (tx) => {
+      // Trava os administradores ativos: dois pedidos simultâneos passam a ser um de cada vez.
+      const admins = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "Operator" WHERE role = 'ADMIN' AND active = true FOR UPDATE`;
+      const target = await tx.operator.findUnique({ where: { id }, select: { role: true, active: true } });
+      if (!target) return 'not_found' as const;
+      if (target.role === 'ADMIN' && target.active && admins.length <= 1) return 'last_admin' as const;
+      await tx.operator.update({ where: { id }, data: { active: false } });
+      return 'ok' as const;
+    });
   }
   async recordLoginSuccess(id: string) {
     await this.prisma.operator.update({ where: { id }, data: { failedAttempts: 0, lockedUntil: null } });

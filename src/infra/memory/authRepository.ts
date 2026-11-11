@@ -11,11 +11,23 @@ export class InMemoryAuthRepository implements AuthRepository {
   operators = new Map<string, OperatorRow>();
   sessions = new Map<string, { operatorId: string; expiresAt: Date }>();
 
+  // Devolve cópias, como o banco: quem chama não altera o registro guardado.
   async findOperatorByUsername(username: string) {
-    return [...this.operators.values()].find((o) => o.username === username) ?? null;
+    const o = [...this.operators.values()].find((x) => x.username === username);
+    return o ? { ...o } : null;
   }
   async findOperatorById(id: string) {
-    return this.operators.get(id) ?? null;
+    const o = this.operators.get(id);
+    return o ? { ...o } : null;
+  }
+  async deactivateOperatorGuarded(id: string) {
+    // Sem espera entre a checagem e a gravação: atômico, como a transação do banco.
+    const target = this.operators.get(id);
+    if (!target) return 'not_found' as const;
+    const admins = [...this.operators.values()].filter((o) => o.role === 'ADMIN' && o.active).length;
+    if (target.role === 'ADMIN' && target.active && admins <= 1) return 'last_admin' as const;
+    target.active = false;
+    return 'ok' as const;
   }
   async createOperator(op: OperatorRow) {
     if ([...this.operators.values()].some((o) => o.username === op.username)) throw new DuplicateOperatorError();
@@ -42,7 +54,11 @@ export class InMemoryAuthRepository implements AuthRepository {
   }
   async setPassword(id: string, passwordHash: string) {
     const o = this.operators.get(id);
-    if (o) o.passwordHash = passwordHash;
+    if (o) {
+      o.passwordHash = passwordHash;
+      o.failedAttempts = 0; // igual ao banco: senha nova destrava a conta
+      o.lockedUntil = null;
+    }
   }
   async setActive(id: string, active: boolean) {
     const o = this.operators.get(id);

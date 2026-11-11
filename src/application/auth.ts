@@ -4,10 +4,11 @@ import { burnPasswordTime, hashPassword, verifyPassword } from '../infra/securit
 import { hashToken, newSessionToken } from '../infra/security/token';
 import {
   CannotDeactivateSelfError,
+  CannotResetOwnPasswordError,
   DuplicateOperatorError,
   InvalidCredentialsError,
+  LastAdminError,
   OperatorNotFoundError,
-  UnauthorizedError,
   WeakPasswordError,
   type AuditDetails,
   type AuditRepository,
@@ -22,6 +23,8 @@ export interface AuthDeps {
   sessionHours?: number;
   /** Falhas seguidas antes de travar a conta, e por quantos minutos. */
   lockout?: { attempts: number; minutes: number };
+  /** Chamado (só com o código do erro) quando a gravação da auditoria falha. */
+  onAuditError?: (code: string) => void;
 }
 
 const clock = (deps: AuthDeps) => (deps.now ?? (() => new Date()))();
@@ -30,7 +33,7 @@ const lockout = (deps: AuthDeps) => deps.lockout ?? { attempts: 5, minutes: 15 }
 
 /**
  * Grava no registro de auditoria. Se a gravação falhar, a operação (já feita) não é desfeita:
- * o erro vai para o log técnico, sem dados pessoais. Ver ADR 0010.
+ * o erro vai para o log técnico, só com o código, sem dados pessoais. Ver ADR 0010.
  */
 export async function audit(
   deps: AuthDeps,
@@ -51,7 +54,7 @@ export async function audit(
       details: extra.details,
     });
   } catch (e) {
-    onError?.((e as { code?: string; name?: string })?.code ?? (e as Error)?.name ?? 'erro');
+    (onError ?? deps.onAuditError)?.((e as { code?: string; name?: string })?.code ?? (e as Error)?.name ?? 'erro');
   }
 }
 
@@ -62,7 +65,12 @@ const principalOf = (op: OperatorRow): Principal => ({
   role: op.role,
 });
 
-/** Entra com usuário e senha. A mesma resposta para usuário inexistente, errado, inativo ou travado. */
+const isLocked = (op: OperatorRow, now: Date) => !!op.lockedUntil && op.lockedUntil > now;
+
+/**
+ * Entra com usuário e senha. A mesma resposta para usuário inexistente, errado, inativo ou travado,
+ * e o mesmo tempo gasto em todos os casos.
+ */
 export async function login(
   deps: AuthDeps,
   input: { username: string; password: string },
@@ -71,16 +79,28 @@ export async function login(
   const username = input.username.trim().toLowerCase();
   const op = await deps.repo.findOperatorByUsername(username);
 
-  if (!op || !op.active || (op.lockedUntil && op.lockedUntil > now)) {
-    await burnPasswordTime(input.password); // gasta o mesmo tempo: não revela se o usuário existe
-    // Não grava o usuário digitado (poderia ser uma senha digitada no campo errado).
-    await audit(deps, op ? principalOf(op) : null, 'auth.login', { ok: false, details: { reason: op ? 'bloqueado' : 'desconhecido' } });
+  if (!op) {
+    // Usuário desconhecido: gasta o mesmo tempo e NÃO grava na auditoria (qualquer pessoa na internet
+    // encheria o histórico, e o texto digitado pode ser uma senha no campo errado).
+    await burnPasswordTime(input.password);
+    throw new InvalidCredentialsError();
+  }
+  if (!op.active || isLocked(op, now)) {
+    await burnPasswordTime(input.password);
+    await audit(deps, principalOf(op), 'auth.login', { ok: false, details: { reason: 'bloqueado' } });
     throw new InvalidCredentialsError();
   }
   if (!(await verifyPassword(input.password, op.passwordHash))) {
     const l = lockout(deps);
     await deps.repo.recordLoginFailure(op.id, l.attempts, new Date(now.getTime() + l.minutes * 60_000));
     await audit(deps, principalOf(op), 'auth.login', { ok: false, details: { reason: 'senha' } });
+    throw new InvalidCredentialsError();
+  }
+
+  // Relê depois da senha (que demora): uma rajada pode ter travado ou desativado a conta nesse meio tempo.
+  const fresh = await deps.repo.findOperatorById(op.id);
+  if (!fresh || !fresh.active || isLocked(fresh, clock(deps))) {
+    await audit(deps, principalOf(op), 'auth.login', { ok: false, details: { reason: 'bloqueado' } });
     throw new InvalidCredentialsError();
   }
 
@@ -123,23 +143,46 @@ export async function createOperator(
   return principalOf(op);
 }
 
-/** O próprio funcionário troca a senha: exige a senha atual e encerra as outras sessões dele. */
+/**
+ * O próprio funcionário troca a senha: exige a senha atual e encerra as outras sessões dele.
+ * Errar a senha atual conta como falha de login (e trava), para quem roubou uma sessão não
+ * ficar adivinhando a senha por aqui.
+ */
 export async function changeOwnPassword(
   deps: AuthDeps,
   who: Principal,
   currentToken: string,
   input: { current: string; next: string },
 ): Promise<void> {
+  const now = clock(deps);
   const op = await deps.repo.findOperatorById(who.operatorId);
-  if (!op || !(await verifyPassword(input.current, op.passwordHash))) throw new InvalidCredentialsError();
+  if (!op || isLocked(op, now)) {
+    await burnPasswordTime(input.current);
+    throw new InvalidCredentialsError();
+  }
+  if (!(await verifyPassword(input.current, op.passwordHash))) {
+    const l = lockout(deps);
+    await deps.repo.recordLoginFailure(op.id, l.attempts, new Date(now.getTime() + l.minutes * 60_000));
+    throw new InvalidCredentialsError();
+  }
   const problem = passwordProblem(input.next, op.username);
   if (problem) throw new WeakPasswordError(problem);
   await deps.repo.setPassword(op.id, await hashPassword(input.next));
   await deps.repo.deleteSessionsOf(op.id, hashToken(currentToken));
 }
 
-/** Administrador redefine a senha de alguém: encerra todas as sessões dessa pessoa. */
-export async function adminResetPassword(deps: AuthDeps, operatorId: string, password: string): Promise<void> {
+/**
+ * Administrador redefine a senha de OUTRA pessoa e encerra as sessões dela.
+ * A própria senha só se troca pela rota própria (exige a senha atual): um token de administrador
+ * roubado não consegue trocar a senha do dono.
+ */
+export async function adminResetPassword(
+  deps: AuthDeps,
+  who: Principal,
+  operatorId: string,
+  password: string,
+): Promise<void> {
+  if (who.operatorId === operatorId) throw new CannotResetOwnPasswordError();
   const op = await deps.repo.findOperatorById(operatorId);
   if (!op) throw new OperatorNotFoundError();
   const problem = passwordProblem(password, op.username);
@@ -149,10 +192,16 @@ export async function adminResetPassword(deps: AuthDeps, operatorId: string, pas
 }
 
 export async function setOperatorActive(deps: AuthDeps, who: Principal, operatorId: string, active: boolean) {
-  if (!active && who.operatorId === operatorId) throw new CannotDeactivateSelfError();
-  if (!(await deps.repo.findOperatorById(operatorId))) throw new OperatorNotFoundError();
-  await deps.repo.setActive(operatorId, active);
-  if (!active) await deps.repo.deleteSessionsOf(operatorId);
+  if (active) {
+    if (!(await deps.repo.findOperatorById(operatorId))) throw new OperatorNotFoundError();
+    await deps.repo.setActive(operatorId, true);
+    return;
+  }
+  if (who.operatorId === operatorId) throw new CannotDeactivateSelfError();
+  const r = await deps.repo.deactivateOperatorGuarded(operatorId);
+  if (r === 'not_found') throw new OperatorNotFoundError();
+  if (r === 'last_admin') throw new LastAdminError();
+  await deps.repo.deleteSessionsOf(operatorId);
 }
 
 export const listOperators = (deps: AuthDeps) => deps.repo.listOperators();

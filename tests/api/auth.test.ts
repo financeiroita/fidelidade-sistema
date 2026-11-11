@@ -5,6 +5,15 @@ import { hashPassword, verifyPassword } from '../../src/infra/security/password'
 import { makeApp } from '../helpers';
 
 const PASSWORD = 'uma-senha-bem-longa-42';
+const ana = {
+  fullName: 'Ana Souza',
+  email: 'ana@exemplo.com',
+  phone: '12988887777',
+  documentType: 'CPF',
+  document: '529.982.247-25',
+  birthDate: '1990-05-17',
+  acceptedTerms: true,
+};
 let clock: Date;
 let ctx: ReturnType<typeof makeApp>;
 
@@ -43,6 +52,15 @@ describe('senhas', () => {
     expect(passwordProblem('aaaaaaaaaaaaaaaa')).toMatch(/repetidos/);
     expect(passwordProblem('maria-senha-forte-1', 'maria')).toMatch(/usuário/);
     expect(passwordProblem(PASSWORD, 'maria')).toBeNull();
+  });
+
+  it('política mede depois da normalização e recusa senhas comuns', () => {
+    // "e" + acento combinante: 12 unidades de texto, mas só 6 caracteres depois do NFKC
+    expect(passwordProblem('é'.repeat(6))).toMatch(/12 caracteres/);
+    // letras de largura total viram letras normais: o usuário continua sendo detectado
+    expect(passwordProblem('ｍａｒｉａ-senha-forte', 'maria')).toMatch(/usuário/);
+    expect(passwordProblem('Password1234')).toMatch(/comum/);
+    expect(passwordProblem('SENHA1234567')).toMatch(/comum/);
   });
 });
 
@@ -100,6 +118,106 @@ describe('login', () => {
     const second = (await login('maria')).json().token;
     expect((await call('POST', '/auth/logout', undefined, bearer(second))).statusCode).toBe(204);
     expect((await call('GET', '/auth/me', undefined, bearer(second))).statusCode).toBe(401);
+  });
+});
+
+describe('proteção contra rajada e adivinhação', () => {
+  it('rajada de senhas erradas simultâneas: a conta trava e a senha certa depois também é recusada', async () => {
+    await realOperator('maria');
+    const burst = await Promise.all(Array.from({ length: 20 }, () => login('maria', 'errada-errada-12')));
+    expect(burst.every((r) => [401, 503].includes(r.statusCode))).toBe(true);
+    expect((await login('maria')).statusCode).toBe(401);
+  });
+
+  it('o limiter de tarefas pesadas recusa o que passa da fila e libera as vagas depois', async () => {
+    const { createLimiter, ServiceBusyError } = await import('../../src/infra/security/limiter');
+    const run = createLimiter(2, 3);
+    const release: Array<() => void> = [];
+    const gate = () => new Promise<void>((resolve) => release.push(resolve));
+    const started = Array.from({ length: 5 }, () => run(gate)); // 2 rodando + 3 na fila
+    await expect(run(gate)).rejects.toBeInstanceOf(ServiceBusyError);
+    // Libera em rodadas: cada tarefa que termina repassa a vaga para a próxima da fila.
+    let finished = false;
+    void Promise.all(started).then(() => (finished = true));
+    for (let i = 0; i < 20 && !finished; i++) {
+      while (release.length) release.shift()!();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    await Promise.all(started);
+    await expect(run(async () => 'ok')).resolves.toBe('ok'); // as vagas voltaram
+  });
+
+  it('limite por IP no login: depois do máximo, 429, e a resposta é genérica', async () => {
+    ctx = makeApp(undefined, () => clock, { login: 3, password: 100, guests: 100 });
+    const results = [];
+    for (let i = 0; i < 5; i++) results.push((await login('ninguem')).statusCode);
+    expect(results).toEqual([401, 401, 401, 429, 429]);
+    expect((await login('ninguem')).json()).toEqual({ error: 'too_many_requests' });
+  });
+
+  it('limite por IP no cadastro público', async () => {
+    ctx = makeApp(undefined, () => clock, { login: 100, password: 100, guests: 2 });
+    const codes = [];
+    for (let i = 0; i < 3; i++) {
+      codes.push((await call('POST', '/guests', { ...ana, email: `x${i}@ex.com`, document: ['529.982.247-25', '111.444.777-35', '168.995.350-09'][i] })).statusCode);
+    }
+    expect(codes).toEqual([201, 201, 429]);
+  });
+
+  it('corpo grande demais nas rotas de senha é recusado', async () => {
+    const big = { username: 'maria', password: 'x'.repeat(2000) };
+    expect((await call('POST', '/auth/login', big)).statusCode).toBeGreaterThanOrEqual(400);
+  });
+
+  it('errar a senha atual ao trocar de senha também trava (quem roubou a sessão não adivinha)', async () => {
+    await realOperator('joao');
+    const { token } = (await login('joao')).json();
+    for (let i = 0; i < 5; i++) {
+      expect((await call('POST', '/auth/password', { current: 'errada-errada-12', next: 'senha-nova-bem-longa-7' }, bearer(token))).statusCode).toBe(401);
+    }
+    // travada: nem a senha atual certa troca
+    expect((await call('POST', '/auth/password', { current: PASSWORD, next: 'senha-nova-bem-longa-7' }, bearer(token))).statusCode).toBe(401);
+    expect((await login('joao')).statusCode).toBe(401);
+  });
+});
+
+describe('cabeçalhos e formato do Authorization', () => {
+  it('respostas não ficam em cache', async () => {
+    const r = await call('GET', '/auth/me', undefined, ctx.headers);
+    expect(r.headers['cache-control']).toBe('no-store');
+    expect(r.headers['x-content-type-options']).toBe('nosniff');
+    expect((await call('GET', '/health')).headers['cache-control']).toBe('no-store');
+  });
+
+  it('Authorization mal formado é recusado', async () => {
+    const t = ctx.headers.authorization.replace('Bearer ', '');
+    for (const value of [t, `bearer ${t}`, `Bearer  ${t}`, `Bearer ${t} outro`, 'Bearer curto', `Bearer ${t}!`, `Basic ${t}`, `Bearer ${'a'.repeat(101)}`]) {
+      expect((await call('GET', '/auth/me', undefined, { authorization: value })).statusCode).toBe(401);
+    }
+    expect((await call('GET', '/auth/me', undefined, ctx.headers)).statusCode).toBe(200);
+  });
+
+  it('funcionário desativado com a sessão ainda gravada não entra', async () => {
+    const rec = ctx.operator('RECEPTION');
+    expect((await call('GET', '/auth/me', undefined, rec.headers)).statusCode).toBe(200);
+    ctx.authRepo.operators.get(rec.id)!.active = false; // a sessão continua no banco
+    expect((await call('GET', '/auth/me', undefined, rec.headers)).statusCode).toBe(401);
+  });
+
+  it('todas as rotas internas exigem login', async () => {
+    const id = '7b0c4b7e-0000-4000-8000-000000000000';
+    const routes: Array<['GET' | 'POST' | 'PATCH', string]> = [
+      ['GET', '/auth/me'], ['POST', '/auth/logout'], ['POST', '/auth/password'],
+      ['GET', '/operators'], ['POST', '/operators'], ['POST', `/operators/${id}/deactivate`],
+      ['POST', `/operators/${id}/activate`], ['POST', `/operators/${id}/password`], ['GET', '/audit'],
+      ['POST', '/stays'], ['POST', `/stays/${id}/checkout`], ['POST', '/rewards'], ['PATCH', `/rewards/${id}`],
+      ['POST', '/redemptions'], ['POST', `/redemptions/${id}/confirm`], ['POST', `/redemptions/${id}/use`],
+      ['POST', `/redemptions/${id}/cancel`], ['GET', `/guests/${id}/balance`], ['GET', `/guests/${id}/statement`],
+    ];
+    for (const [method, url] of routes) {
+      const r = await call(method, url, method === 'GET' ? undefined : {});
+      expect([method, url, r.statusCode]).toEqual([method, url, 401]);
+    }
   });
 });
 
@@ -167,6 +285,33 @@ describe('gestão de funcionários (administrador)', () => {
     });
     expect((await call('POST', `/operators/${joao.id}/activate`, undefined, admin.headers)).statusCode).toBe(204);
     expect((await login('joao')).statusCode).toBe(200);
+  });
+
+  it('administrador não redefine a própria senha por aqui (exige a rota própria, com a senha atual)', async () => {
+    const admin = ctx.operator('ADMIN');
+    const r = await call('POST', `/operators/${admin.id}/password`, { password: 'uma-senha-nova-longa-55' }, admin.headers);
+    expect(r.statusCode).toBe(409);
+    expect(r.json()).toEqual({ error: 'use_own_password_route' });
+  });
+
+  it('nunca fica sem administrador: o último não pode ser desativado, nem por dois pedidos simultâneos', async () => {
+    const a = ctx.operator('ADMIN');
+    const b = ctx.operator('ADMIN');
+    const [x, y] = await Promise.all([
+      call('POST', `/operators/${b.id}/deactivate`, undefined, a.headers),
+      call('POST', `/operators/${a.id}/deactivate`, undefined, b.headers),
+    ]);
+    expect([x.statusCode, y.statusCode].sort()).toEqual([204, 409]);
+    const activeAdmins = [...ctx.authRepo.operators.values()].filter((o) => o.role === 'ADMIN' && o.active);
+    expect(activeAdmins).toHaveLength(1);
+    const loser = x.statusCode === 409 ? x : y;
+    expect(loser.json()).toEqual({ error: 'last_admin' });
+  });
+
+  it('gerente não consegue criar administrador', async () => {
+    const r = await call('POST', '/operators', { username: 'chefe', name: 'Chefe', role: 'ADMIN', password: PASSWORD }, ctx.headers);
+    expect(r.statusCode).toBe(403);
+    expect([...ctx.authRepo.operators.values()].some((o) => o.username === 'chefe')).toBe(false);
   });
 
   it('o administrador redefine a senha e as sessões antigas caem', async () => {
@@ -246,14 +391,32 @@ describe('registro de auditoria', () => {
     expect((await call('GET', '/audit?limit=1', undefined, ctx.headers)).json()).toHaveLength(1);
   });
 
-  it('login ok e falho ficam registrados, sem o usuário digitado nem a senha', async () => {
+  it('login ok e falho de funcionário real ficam registrados; usuário desconhecido não enche o histórico', async () => {
     await realOperator('maria');
     await login('maria', 'errada-errada-12');
     await login('digitei-a-senha-no-campo-do-usuario');
     await login('maria');
     const entries = ctx.auditRepo.entries.filter((e) => e.action === 'auth.login');
-    expect(entries.map((e) => e.ok)).toEqual([false, false, true]);
-    expect(JSON.stringify(entries)).not.toMatch(/errada-errada|digitei-a-senha/);
+    expect(entries.map((e) => e.ok)).toEqual([false, true]);
+    expect(JSON.stringify(ctx.auditRepo.entries)).not.toMatch(/errada-errada|digitei-a-senha/);
+  });
+
+  it('consultar saldo, extrato e a própria auditoria também fica registrado', async () => {
+    const g = (await call('POST', '/guests', ana)).json();
+    await call('GET', `/guests/${g.id}/balance`, undefined, ctx.headers);
+    await call('GET', `/guests/${g.id}/statement`, undefined, ctx.headers);
+    await call('GET', '/audit', undefined, ctx.headers);
+    const actions = ctx.auditRepo.entries.map((e) => [e.action, e.entityId]);
+    expect(actions).toContainEqual(['guest.balance', g.id]);
+    expect(actions).toContainEqual(['guest.statement', g.id]);
+    expect(actions.map((a) => a[0])).toContain('audit.read');
+  });
+
+  it('a criação de estadia guarda o hóspede e o total (só números e ids)', async () => {
+    const g = (await call('POST', '/guests', ana)).json();
+    await call('POST', '/stays', { guestId: g.id, channel: 'PHONE', checkIn: '2026-07-10', checkOut: '2026-07-12', externalRef: 'T-1', charges: [{ category: 'ROOM', amount: 1500.5 }] }, ctx.headers);
+    const e = ctx.auditRepo.entries.find((x) => x.action === 'stay.create')!;
+    expect(e.details).toEqual({ guestId: g.id, channel: 'PHONE', total: 1500.5 });
   });
 
   it('se a gravação da auditoria falhar, a operação já feita continua valendo', async () => {

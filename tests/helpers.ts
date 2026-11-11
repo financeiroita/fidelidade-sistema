@@ -9,19 +9,29 @@ import { newSessionToken } from '../src/infra/security/token';
 
 export const SECRET = 'segredo-de-teste-com-mais-de-32-caracteres!!';
 
-export function makeApp(repo: GuestRepository = new InMemoryGuestRepository(), now?: () => Date) {
+/** Nos testes o limite por IP fica alto, para não atrapalhar; os testes de limite o reduzem. */
+const HIGH = 100_000;
+
+export function makeApp(
+  repo: GuestRepository = new InMemoryGuestRepository(),
+  now?: () => Date,
+  limits: { login?: number; password?: number; guests?: number } = { login: HIGH, password: HIGH, guests: HIGH },
+) {
   const guests = repo as InMemoryGuestRepository;
   const stays = new InMemoryStayRepository(guests);
   const rewards = new InMemoryRewardRepository(stays, guests, now);
   const authRepo = new InMemoryAuthRepository();
   const auditRepo = new InMemoryAuditRepository();
   const auth = { repo: authRepo, audit: auditRepo, now };
-  const app = buildApp({
-    signup: { repo, documentSecret: SECRET, now },
-    loyalty: { stays, now },
-    rewards: { repo: rewards, now },
-    auth,
-  });
+  const app = buildApp(
+    {
+      signup: { repo, documentSecret: SECRET, now },
+      loyalty: { stays, now },
+      rewards: { repo: rewards, now },
+      auth,
+    },
+    { limits },
+  );
 
   let n = 0;
   /** Cria um funcionário com sessão válida (sem passar pela senha, que é lenta de propósito). */

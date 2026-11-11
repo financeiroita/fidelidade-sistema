@@ -14,7 +14,7 @@
 - **Saldo e extrato** (internos): `GET /guests/:id/balance` (disponível, razão e boas-vindas pendentes) e `GET /guests/:id/statement?limit=`.
 
 ## Limitações
-- Não há autenticação do próprio hóspede: o resgate é feito pela recepção ou por um sistema com a chave interna. Um app/site do hóspede exige login de hóspede (decisão futura).
+- Não há autenticação do próprio hóspede: o resgate é feito por um funcionário com login (ver ADR 0010). Um app/site do hóspede exige login de hóspede (decisão futura).
 - Não há validade do resgate (ex.: prazo para usar o voucher) nem estoque/limite por prêmio.
 - Não testado contra PostgreSQL real.
 
