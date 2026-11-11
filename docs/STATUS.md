@@ -2,9 +2,7 @@
 
 _Atualizado: 2026-11-11_
 
-- Repositório inicializado, estrutura e guias criados.
-- Pasta estava vazia: stack, escopo e objetivo ainda não definidos.
-
-## Próximos passos
-- Definir objetivo e stack (registrar em ADR).
-- Autenticar no GitHub (`gh auth login`) e publicar o repositório.
+- Feito: ADR 0002/0003, schema Prisma, regras de pontos/níveis/expiração (funções puras) e testes.
+- Pendente: migração do banco; API; adaptador PMS; jobs de expiração e aniversário.
+- GitHub: aguardando `gh auth login`.
+- Perguntas em aberto: `docs/perguntas-em-aberto.md`.

@@ -1,0 +1,219 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StaySource {
+  PMS
+  MANUAL
+}
+
+enum StayStatus {
+  RESERVED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  NO_SHOW
+}
+
+enum BookingChannel {
+  DIRECT_WEBSITE
+  PHONE
+  WHATSAPP
+  WALK_IN
+  OTA
+  CORPORATE
+  AGENCY
+}
+
+enum ChargeCategory {
+  ROOM
+  FNB
+  SPA
+  EVENTS
+  OTHER
+}
+
+enum PointsTxType {
+  EARN_STAY
+  EARN_CHARGE
+  EARN_BONUS
+  EARN_CAMPAIGN
+  REDEEM
+  EXPIRE
+  ADJUST
+  REVERSAL
+}
+
+enum RedemptionStatus {
+  PENDING
+  CONFIRMED
+  USED
+  CANCELLED
+}
+
+enum RewardType {
+  FREE_NIGHT
+  UPGRADE
+  DINING
+  SPA
+  DISCOUNT
+  EXPERIENCE
+}
+
+model Tier {
+  id               Int     @id @default(autoincrement())
+  name             String  @unique
+  rank             Int     @unique
+  minQualifyingPts Int
+  multiplier       Decimal @db.Decimal(4, 2)
+  benefits         Json    @default("[]")
+  guests           Guest[]
+}
+
+model Guest {
+  id               String              @id @default(uuid())
+  fullName         String
+  email            String?             @unique
+  phone            String?
+  document         String?             @unique // CPF/passaporte; proteger (LGPD)
+  birthDate        DateTime?           @db.Date
+  nationality      String?
+  city             String?
+  state            String?
+  country          String?
+  language         String?
+  preferences      Json                @default("{}") // travesseiro, andar, dieta, pet...
+  travelProfile    String? // família, casal, amigos, negócios (marketing)
+  acquisitionSrc   String? // origem do cadastro
+  marketingConsent Boolean             @default(false)
+  consentAt        DateTime?
+  memberSince      DateTime            @default(now())
+  tierId           Int
+  tier             Tier                @relation(fields: [tierId], references: [id])
+  tierValidUntil   DateTime?
+  referralCode     String              @unique
+  referredById     String?
+  referredBy       Guest?              @relation("Referral", fields: [referredById], references: [id])
+  referrals        Guest[]             @relation("Referral")
+  stays            Stay[]
+  pointsTx         PointsTransaction[]
+  redemptions      Redemption[]
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  deletedAt        DateTime? // anonimização LGPD
+
+  @@index([birthDate])
+  @@index([tierId])
+}
+
+model Stay {
+  id                String              @id @default(uuid())
+  guestId           String
+  guest             Guest               @relation(fields: [guestId], references: [id])
+  source            StaySource
+  pmsReservationId  String?             @unique
+  channel           BookingChannel
+  status            StayStatus
+  checkIn           DateTime            @db.Date
+  checkOut          DateTime            @db.Date
+  nights            Int
+  roomType          String?
+  adults            Int                 @default(1)
+  children          Int                 @default(0)
+  rateCode          String?
+  isDirect          Boolean             @default(false)
+  charges           StayCharge[]
+  pointsTx          PointsTransaction[]
+  pointsProcessedAt DateTime? // garante crédito único
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([guestId, checkOut])
+  @@index([status, checkOut])
+}
+
+model StayCharge {
+  id          String         @id @default(uuid())
+  stayId      String
+  stay        Stay           @relation(fields: [stayId], references: [id], onDelete: Cascade)
+  category    ChargeCategory
+  description String?
+  amount      Decimal        @db.Decimal(12, 2) // líquido de impostos; negativo = estorno
+  postedAt    DateTime       @default(now())
+  pmsLineId   String?        @unique
+
+  @@index([stayId])
+}
+
+model Campaign {
+  id          String              @id @default(uuid())
+  name        String
+  startsAt    DateTime
+  endsAt      DateTime
+  multiplier  Decimal?            @db.Decimal(4, 2) // ex.: 1.5 = +50%
+  bonusPoints Int?
+  rules       Json                @default("{}") // ex.: {"minNights":2,"tiers":["Ouro"]}
+  active      Boolean             @default(true)
+  pointsTx    PointsTransaction[]
+}
+
+// Razão imutável. Saldo = soma(points) das transações do hóspede.
+model PointsTransaction {
+  id             String              @id @default(uuid())
+  guestId        String
+  guest          Guest               @relation(fields: [guestId], references: [id])
+  type           PointsTxType
+  points         Int // positivo = crédito, negativo = débito
+  qualifying     Boolean             @default(false) // conta para nível
+  remaining      Int                 @default(0) // lote de crédito: pontos ainda não consumidos
+  expiresAt      DateTime? // só em créditos
+  stayId         String?
+  stay           Stay?               @relation(fields: [stayId], references: [id])
+  redemptionId   String?
+  redemption     Redemption?         @relation(fields: [redemptionId], references: [id])
+  campaignId     String?
+  campaign       Campaign?           @relation(fields: [campaignId], references: [id])
+  reversesId     String?             @unique
+  reverses       PointsTransaction?  @relation("Reversal", fields: [reversesId], references: [id])
+  reversedBy     PointsTransaction?  @relation("Reversal")
+  idempotencyKey String              @unique // ex.: "stay:<id>:base"
+  note           String?
+  createdBy      String?
+  createdAt      DateTime            @default(now())
+
+  @@index([guestId, createdAt])
+  @@index([guestId, expiresAt])
+}
+
+model Reward {
+  id          String       @id @default(uuid())
+  name        String
+  type        RewardType
+  pointsCost  Int
+  description String?
+  minTierRank Int          @default(0)
+  active      Boolean      @default(true)
+  redemptions Redemption[]
+}
+
+model Redemption {
+  id          String              @id @default(uuid())
+  guestId     String
+  guest       Guest               @relation(fields: [guestId], references: [id])
+  rewardId    String
+  reward      Reward              @relation(fields: [rewardId], references: [id])
+  points      Int
+  status      RedemptionStatus    @default(PENDING)
+  code        String              @unique
+  stayId      String? // estadia em que foi usado
+  requestedAt DateTime            @default(now())
+  usedAt      DateTime?
+  pointsTx    PointsTransaction[]
+
+  @@index([guestId, status])
+}

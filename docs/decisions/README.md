@@ -5,3 +5,5 @@ Memória do projeto. Para alterar uma decisão: crie novo ADR e marque o antigo 
 | Nº | Título | Status |
 |---|---|---|
 | [0001](0001-estrutura-e-fluxo-de-trabalho.md) | Estrutura do projeto e fluxo de trabalho | Aceita |
+| [0002](0002-stack-typescript-postgresql.md) | Stack: TypeScript + PostgreSQL | Aceita |
+| [0003](0003-regras-de-pontos.md) | Regras de pontos, níveis e expiração | Proposta |
