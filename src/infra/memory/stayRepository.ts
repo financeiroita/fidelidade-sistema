@@ -19,7 +19,8 @@ interface StoredStay extends NewStay {
 
 export type StoredTx = Omit<NewPointsTx, 'type' | 'expiresAt'> & {
   id: string;
-  type: NewPointsTx['type'] | 'EXPIRE';
+  type: NewPointsTx['type'] | 'EXPIRE' | 'REDEEM' | 'REVERSAL';
+  redemptionId?: string;
   /** Só créditos têm validade; o lançamento de expiração não. */
   expiresAt?: Date;
   remaining: number;

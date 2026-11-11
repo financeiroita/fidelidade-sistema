@@ -190,6 +190,7 @@ model PointsTransaction {
   reversesId     String?             @unique
   reverses       PointsTransaction?  @relation("Reversal", fields: [reversesId], references: [id])
   reversedBy     PointsTransaction?  @relation("Reversal")
+  redemptionLots RedemptionLot[]
   idempotencyKey String              @unique // ex.: "stay:<id>:base"
   note           String?
   createdBy      String?
@@ -197,6 +198,18 @@ model PointsTransaction {
 
   @@index([guestId, createdAt])
   @@index([guestId, expiresAt])
+}
+
+// De quais lotes de crédito saíram os pontos de um resgate (para devolver ao cancelar).
+model RedemptionLot {
+  id           String            @id @default(uuid())
+  redemptionId String
+  redemption   Redemption        @relation(fields: [redemptionId], references: [id], onDelete: Cascade)
+  lotId        String
+  lot          PointsTransaction @relation(fields: [lotId], references: [id])
+  points       Int
+
+  @@index([redemptionId])
 }
 
 // Fila de avisos de pontos a vencer. A rotina noturna grava; o envio (e-mail/WhatsApp) lê daqui.
@@ -234,6 +247,8 @@ model Redemption {
   points      Int
   status      RedemptionStatus    @default(PENDING)
   code        String              @unique
+  requestId   String              @unique // identificador do pedido: impede resgatar duas vezes
+  lots        RedemptionLot[]
   stayId      String? // estadia em que foi usado
   requestedAt DateTime            @default(now())
   usedAt      DateTime?

@@ -108,6 +108,90 @@ export interface StayRepository {
   commitCheckout(commit: CheckoutCommit): Promise<void>;
 }
 
+// ---- Resgates ----
+import type { Consumption, Lot } from '../domain/points/expiry';
+
+export type RewardType = 'FREE_NIGHT' | 'UPGRADE' | 'DINING' | 'SPA' | 'DISCOUNT' | 'EXPERIENCE';
+export type RedemptionStatus = 'PENDING' | 'CONFIRMED' | 'USED' | 'CANCELLED';
+
+export interface NewReward {
+  name: string;
+  type: RewardType;
+  pointsCost: number;
+  description?: string;
+  minTierRank: number;
+}
+export interface RewardRow extends NewReward {
+  id: string;
+  active: boolean;
+}
+export interface NewRedemption {
+  id: string;
+  guestId: string;
+  rewardId: string;
+  points: number;
+  code: string;
+  requestId: string;
+  /** De quais lotes os pontos saíram (para devolver no cancelamento). */
+  lots: Consumption[];
+}
+export interface RedemptionRow extends NewRedemption {
+  status: RedemptionStatus;
+  stayId: string | null;
+}
+export interface RewardGuest {
+  id: string;
+  tierRank: number;
+  tierValidUntil: Date | null;
+  active: boolean;
+}
+export interface StatementRow {
+  at: Date;
+  type: string;
+  points: number;
+  note: string | null;
+}
+
+export class RewardNotAvailableError extends Error {}
+export class TierTooLowError extends Error {}
+export class InsufficientPointsError extends Error {
+  constructor(public readonly available: number) {
+    super('Saldo insuficiente');
+  }
+}
+export class RedemptionNotFoundError extends Error {}
+export class InvalidTransitionError extends Error {}
+/** O mesmo requestId já foi usado por outro hóspede ou prêmio. */
+export class RequestIdReusedError extends Error {}
+
+/** Operações dentro da transação do hóspede (hóspede travado: um fluxo por vez). */
+export interface RewardUow {
+  getGuest(guestId: string): Promise<RewardGuest | null>;
+  getReward(rewardId: string): Promise<RewardRow | null>;
+  getRedemptionByRequest(requestId: string): Promise<RedemptionRow | null>;
+  getRedemption(id: string): Promise<RedemptionRow | null>;
+  /** Lotes com saldo e ainda dentro da validade. */
+  loadUsableLots(guestId: string, now: Date): Promise<Lot[]>;
+  /** Grava o resgate (PENDING), abate os lotes e lança o débito REDEEM no extrato. */
+  createRedemption(r: NewRedemption, rewardName: string): Promise<void>;
+  setStatus(id: string, status: RedemptionStatus, extra?: { stayId?: string; usedAt?: Date }): Promise<void>;
+  /** Devolve o saldo aos lotes de origem, lança REVERSAL e marca CANCELLED. */
+  cancelRedemption(r: RedemptionRow): Promise<void>;
+}
+
+export interface RewardRepository {
+  createReward(r: NewReward): Promise<RewardRow>;
+  listActiveRewards(): Promise<RewardRow[]>;
+  findRedemptionGuest(redemptionId: string): Promise<string | null>;
+  /** Trava o hóspede e executa tudo numa transação. Se `fn` lançar erro, nada é gravado. */
+  inGuestTransaction<T>(guestId: string, fn: (uow: RewardUow) => Promise<T>): Promise<T>;
+  getBalance(
+    guestId: string,
+    now: Date,
+  ): Promise<{ available: number; ledger: number; pendingWelcome: number } | null>;
+  getStatement(guestId: string, limit: number): Promise<StatementRow[]>;
+}
+
 // ---- Rotina noturna (vencimento de pontos, nível, avisos) ----
 import type { ExpirationPlan, LotRow, NoticePlan } from '../domain/points/maintenance';
 

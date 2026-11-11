@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from './api/app';
 import { PrismaGuestRepository } from './infra/prisma/guestRepository';
+import { PrismaRewardRepository } from './infra/prisma/rewardRepository';
 import { PrismaStayRepository } from './infra/prisma/stayRepository';
 
 // Exige tamanho mínimo e variedade de caracteres (rejeita "aaaa...", "1234...").
@@ -23,6 +24,7 @@ const app = buildApp(
   {
     signup: { repo: new PrismaGuestRepository(prisma), documentSecret: secret },
     loyalty: { stays: new PrismaStayRepository(prisma) },
+    rewards: { repo: new PrismaRewardRepository(prisma) },
     internalApiKey,
   },
   { logger: true },

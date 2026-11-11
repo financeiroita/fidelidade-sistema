@@ -46,3 +46,8 @@ Exigem o cabeçalho `x-api-key` com o valor de `INTERNAL_API_KEY`.
 
 ### Rotina diária
 `npm run job:nightly` vence pontos, revisa níveis e gera os avisos de vencimento. Agende uma vez por dia (ver ADR 0008).
+
+### Prêmios, saldo e extrato
+- `GET /rewards` (público): catálogo ativo. `POST /rewards` (interno): cadastra prêmio.
+- `POST /redemptions` e `POST /redemptions/:id/{confirm,use,cancel}` (internos): resgate e ciclo.
+- `GET /guests/:id/balance` e `GET /guests/:id/statement` (internos): saldo e extrato.
