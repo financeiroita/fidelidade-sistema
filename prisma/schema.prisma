@@ -80,7 +80,7 @@ model Guest {
   fullName         String
   email            String?             @unique
   phone            String?
-  document         String?             @unique // CPF/passaporte; proteger (LGPD)
+  document         String              @unique // CPF/passaporte; proteger (LGPD)
   birthDate        DateTime?           @db.Date
   nationality      String?
   city             String?
