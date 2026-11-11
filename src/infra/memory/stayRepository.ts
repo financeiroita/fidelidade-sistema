@@ -68,8 +68,8 @@ export class InMemoryStayRepository implements StayRepository {
 
   async qualifyingPointsSince(guestId: string, since: Date) {
     return this.transactions
-      .filter((t) => t.guestId === guestId && t.qualifying && t.createdAt >= since)
-      .reduce((s, t) => s + t.points, 0);
+      .filter((t) => t.guestId === guestId && t.createdAt >= since)
+      .reduce((s, t) => s + t.qualifyingPts, 0);
   }
 
   async commitCheckout(c: CheckoutCommit) {

@@ -171,6 +171,17 @@ describe('check-out e crédito de pontos', () => {
     expect(second.earned).toBe(1250); // Prata: 1,25x
   });
 
+  it('o multiplicador não acelera a subida: 3.000 pontos base só pagam o Ouro em 8.000 base', async () => {
+    const g = await signup(ana);
+    await complete(g.id, [{ category: 'ROOM', amount: 3500 }], 'OTA'); // Prata (3.500 base)
+    // Prata rende 1,25x: ganha 5.000 pontos, mas só 4.000 contam para o nível (total base 7.500)
+    const r = await complete(g.id, [{ category: 'ROOM', amount: 4000 }], 'OTA');
+    expect(r).toMatchObject({ earned: 5000, tier: 'Prata', upgraded: false });
+    // Com pontos multiplicados somaria 3.500 + 5.000 = 8.500 e já seria Ouro.
+    const r2 = await complete(g.id, [{ category: 'ROOM', amount: 500 }], 'OTA'); // base 8.000
+    expect(r2).toMatchObject({ tier: 'Ouro', upgraded: true });
+  });
+
   it('estorno no folio não gera pontos negativos', async () => {
     const g = await signup(ana);
     const r = await complete(g.id, [

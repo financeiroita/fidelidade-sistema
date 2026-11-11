@@ -30,7 +30,7 @@ Cadastre-se grátis e comece a acumular pontos já na sua próxima estadia. Sem 
 | Ouro | [8.000] pontos em 12 meses | 50% a mais (1,5x) |
 | Diamante | [20.000] pontos em 12 meses | o dobro (2x) |
 
-Além de ganhar pontos mais rápido, cada nível traz benefícios exclusivos, como [late check-out, upgrade sujeito à disponibilidade, welcome drink, café da manhã especial]. Os pontos de bônus, como aniversário e indicação, não contam para subir de nível, mas contam para o seu saldo.
+Além de ganhar pontos mais rápido, cada nível traz benefícios exclusivos, como [late check-out, upgrade sujeito à disponibilidade, welcome drink, café da manhã especial]. Para subir de nível contam os pontos-base, ou seja, o valor gasto sem multiplicadores. Os pontos de bônus (reserva direta, aniversário, indicação, campanhas) entram no saldo, mas não contam para o nível.
 
 ## Como usar seus pontos
 

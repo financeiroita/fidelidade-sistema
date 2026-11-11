@@ -15,7 +15,7 @@ Todos os números ficam em `src/config/loyalty.ts`; alterar lá e registrar novo
 - Cancelamento/no-show: sem pontos. Estorno/reembolso no folio: estorno proporcional.
 - Hipótese assumida: diárias também pontuam (o cliente listou só extras e bônus). Confirmar.
 
-## Níveis (pontos qualificáveis em 12 meses móveis; bônus não qualificam)
+## Níveis (pontos-base em 12 meses móveis; DECIDIDO em 2026-11-11: conta só o valor base, sem multiplicador do nível; bônus não qualificam)
 | Nível | Mín. pts qualificáveis | Multiplicador |
 |---|---|---|
 | Bronze | 0 | 1,00 |

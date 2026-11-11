@@ -35,7 +35,8 @@ export interface NewPointsTx {
   guestId: string;
   type: EarnTxType;
   points: number;
-  qualifying: boolean;
+  /** Parte dos pontos que conta para o nível (valor base, sem multiplicador). */
+  qualifyingPts: number;
   expiresAt: Date;
   stayId?: string;
   idempotencyKey: string;

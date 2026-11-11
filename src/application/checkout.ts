@@ -69,7 +69,7 @@ export function planCheckout(
     guestId: guest.id,
     type: l.kind === 'ROOM' ? 'EARN_STAY' : l.kind === 'CHARGE' ? 'EARN_CHARGE' : 'EARN_BONUS',
     points: l.points,
-    qualifying: l.qualifying,
+    qualifyingPts: l.qualifyingPts,
     expiresAt,
     stayId: stay.id,
     idempotencyKey: `stay:${stay.id}:${l.kind}${l.category ? `:${l.category}` : ''}`,
@@ -84,7 +84,7 @@ export function planCheckout(
         guestId: guest.id,
         type: 'EARN_BONUS',
         points: guest.welcomeBonusPending,
-        qualifying: false,
+        qualifyingPts: 0,
         expiresAt,
         stayId: stay.id,
         idempotencyKey: `welcome:${guest.id}`,
@@ -97,7 +97,7 @@ export function planCheckout(
         guestId: guest.referredById,
         type: 'EARN_BONUS',
         points: cfg.referral.referrerPoints,
-        qualifying: false,
+        qualifyingPts: 0,
         expiresAt,
         idempotencyKey: `referral:${guest.id}`,
         note: 'Indicação: 1º check-out do indicado',
@@ -105,7 +105,7 @@ export function planCheckout(
     }
   }
 
-  const qualifyingNow = qualifyingBefore + lines.filter((l) => l.qualifying).reduce((s, l) => s + l.points, 0);
+  const qualifyingNow = qualifyingBefore + lines.reduce((s, l) => s + l.qualifyingPts, 0);
   const reached = resolveTier(qualifyingNow, cfg);
   const upgraded = reached.rank > tier.rank;
   const maintained = !upgraded && tier.rank > 0 && qualifyingNow >= tier.minQualifyingPts;

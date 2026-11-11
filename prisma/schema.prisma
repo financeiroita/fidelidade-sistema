@@ -177,7 +177,7 @@ model PointsTransaction {
   guest          Guest               @relation(fields: [guestId], references: [id])
   type           PointsTxType
   points         Int // positivo = crédito, negativo = débito
-  qualifying     Boolean             @default(false) // conta para nível
+  qualifyingPts  Int                 @default(0) // parte que conta para nível: valor base, sem multiplicador
   remaining      Int                 @default(0) // lote de crédito: pontos ainda não consumidos
   expiresAt      DateTime? // só em créditos
   stayId         String?

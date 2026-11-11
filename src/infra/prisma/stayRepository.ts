@@ -83,10 +83,10 @@ export class PrismaStayRepository implements StayRepository {
 
   async qualifyingPointsSince(guestId: string, since: Date): Promise<number> {
     const r = await this.prisma.pointsTransaction.aggregate({
-      where: { guestId, qualifying: true, createdAt: { gte: since } },
-      _sum: { points: true },
+      where: { guestId, createdAt: { gte: since } },
+      _sum: { qualifyingPts: true },
     });
-    return r._sum.points ?? 0;
+    return r._sum.qualifyingPts ?? 0;
   }
 
   async commitCheckout(c: CheckoutCommit): Promise<void> {
@@ -109,7 +109,7 @@ export class PrismaStayRepository implements StayRepository {
               type: t.type,
               points: t.points,
               remaining: t.points,
-              qualifying: t.qualifying,
+              qualifyingPts: t.qualifyingPts,
               expiresAt: t.expiresAt,
               stayId: t.stayId,
               idempotencyKey: t.idempotencyKey,

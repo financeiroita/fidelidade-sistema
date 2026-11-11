@@ -23,7 +23,16 @@ describe('acúmulo', () => {
   it('reserva direta dá +20% sobre a diária base, sem qualificar', () => {
     const l = calculateStayPoints({ isDirect: true, charges: [{ category: 'ROOM', amount: 1000 }] }, bronze, cfg);
     expect(totalPoints(l)).toBe(1200);
-    expect(l.find((x) => x.kind === 'DIRECT_BONUS')?.qualifying).toBe(false);
+    expect(l.find((x) => x.kind === 'DIRECT_BONUS')?.qualifyingPts).toBe(0);
+  });
+  it('para o nível conta só o valor base, sem multiplicador', () => {
+    const l = calculateStayPoints(
+      { isDirect: false, charges: [{ category: 'ROOM', amount: 1000 }, { category: 'EVENTS', amount: 1000 }] },
+      ouro,
+      cfg,
+    );
+    expect(totalPoints(l)).toBe(2250); // (1000 + 500) * 1,5
+    expect(l.reduce((s, x) => s + x.qualifyingPts, 0)).toBe(1500);
   });
   it('eventos 0,5 e outros 0; estorno não gera negativo', () => {
     const l = calculateStayPoints(

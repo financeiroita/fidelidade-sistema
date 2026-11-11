@@ -29,7 +29,7 @@ Corrigido:
 - Chaves secretas exigem variedade de caracteres; logs de erro não incluem mensagens do banco; `id` do check-out é validado.
 
 Decisões do hotel em aberto:
-1. **Pontos qualificáveis com ou sem multiplicador?** Hoje o Diamante conta 2x para subir (cálculo sobre pontos já multiplicados). Programas costumam qualificar pelo valor base. Muda a velocidade de subida de nível (ADR 0003).
+1. ~~Pontos qualificáveis com ou sem multiplicador?~~ DECIDIDO: só valor base, sem multiplicador (coluna `qualifyingPts`). Os limiares de nível passam a ser em pontos-base, ou seja, equivalem ao valor gasto em reais.
 2. **Estorno depois do check-out:** hoje só se compensa estorno lançado antes do check-out e na mesma categoria. Falta rota de estorno que reduza os pontos já creditados (tipo REVERSAL).
 3. **Nível vencido:** até existir a rotina noturna, um nível sem atividade continua valendo.
 

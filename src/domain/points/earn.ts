@@ -12,7 +12,8 @@ export interface EarnLine {
   kind: 'ROOM' | 'CHARGE' | 'DIRECT_BONUS';
   category?: ChargeCategory;
   points: number;
-  qualifying: boolean;
+  /** Pontos que contam para o nível: valor base, sem o multiplicador do nível (ADR 0003). */
+  qualifyingPts: number;
 }
 
 /** Arredonda para baixo tolerando o erro de ponto flutuante (ex.: 2.9999999999999996 vira 3). */
@@ -31,11 +32,13 @@ export function calculateStayPoints(input: StayEarnInput, tier: TierConfig, cfg:
     const base = floorSafe((Math.max(0, cents) * cfg.earnRatePerCurrency[category]) / 100);
     const points = floorSafe(base * tier.multiplier);
     if (category === 'ROOM') roomBase = base;
-    if (points > 0) lines.push({ kind: category === 'ROOM' ? 'ROOM' : 'CHARGE', category, points, qualifying: true });
+    if (points > 0) {
+      lines.push({ kind: category === 'ROOM' ? 'ROOM' : 'CHARGE', category, points, qualifyingPts: base });
+    }
   }
   if (input.isDirect && roomBase > 0) {
     const bonus = floorSafe(roomBase * cfg.directBookingBonusRate);
-    if (bonus > 0) lines.push({ kind: 'DIRECT_BONUS', points: bonus, qualifying: false });
+    if (bonus > 0) lines.push({ kind: 'DIRECT_BONUS', points: bonus, qualifyingPts: 0 });
   }
   return lines;
 }
