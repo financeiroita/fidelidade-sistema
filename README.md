@@ -38,3 +38,8 @@ npm run db:up && npm run db:migrate && npm run db:seed
 npm run dev              # http://localhost:3000
 ```
 `POST /guests` cadastra um hóspede (corpo: ver `src/domain/guests/signup.ts`). `GET /health` verifica a API.
+
+### Rotas internas (recepção)
+Exigem o cabeçalho `x-api-key` com o valor de `INTERNAL_API_KEY`.
+- `POST /stays`: lança a estadia e o folio por categoria. Corpo: ver `src/domain/stays/stay.ts`.
+- `POST /stays/:id/checkout`: credita os pontos (uma única vez por estadia).

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { buildApp } from '../../src/api/app';
+import { makeApp } from '../helpers';
 import { ReferralCodeCollisionError } from '../../src/application/ports';
 import { isValidCpf } from '../../src/domain/guests/cpf';
 import { InMemoryGuestRepository } from '../../src/infra/memory/guestRepository';
@@ -16,12 +16,12 @@ const valid = {
 };
 
 let repo: InMemoryGuestRepository;
-let app: ReturnType<typeof buildApp>;
+let app: ReturnType<typeof makeApp>['app'];
 const post = (body: unknown) => app.inject({ method: 'POST', url: '/guests', payload: body as object });
 
 beforeEach(() => {
   repo = new InMemoryGuestRepository();
-  app = buildApp({ repo, documentSecret: SECRET });
+  app = makeApp(repo).app;
 });
 
 describe('CPF', () => {
@@ -125,7 +125,7 @@ describe('POST /guests', () => {
       if (calls++ === 0) throw new ReferralCodeCollisionError();
       return real(g);
     };
-    const a = buildApp({ repo: flaky, documentSecret: SECRET });
+    const a = makeApp(flaky).app;
     const res = await a.inject({ method: 'POST', url: '/guests', payload: valid });
     expect(res.statusCode).toBe(201);
     expect(calls).toBe(2);
