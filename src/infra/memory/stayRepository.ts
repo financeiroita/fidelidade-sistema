@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   DuplicateStayError,
   GuestNotFoundError,
@@ -16,10 +17,17 @@ interface StoredStay extends NewStay {
   pointsProcessedAt: Date | null;
 }
 
+export type StoredTx = Omit<NewPointsTx, 'type'> & {
+  id: string;
+  type: NewPointsTx['type'] | 'EXPIRE';
+  remaining: number;
+  createdAt: Date;
+};
+
 /** Implementação em memória, usada nos testes. Lê os hóspedes do repositório de hóspedes. */
 export class InMemoryStayRepository implements StayRepository {
   stays = new Map<string, StoredStay>();
-  transactions: Array<NewPointsTx & { createdAt: Date }> = [];
+  transactions: StoredTx[] = [];
   tiers = new Map<string, { rank: number; validUntil?: Date }>();
 
   constructor(private readonly guests: InMemoryGuestRepository) {}
@@ -77,7 +85,9 @@ export class InMemoryStayRepository implements StayRepository {
     if (!s || s.pointsProcessedAt) throw new StayAlreadyProcessedError();
     const keys = new Set(this.transactions.map((t) => t.idempotencyKey));
     if (c.transactions.some((t) => keys.has(t.idempotencyKey))) throw new StayAlreadyProcessedError();
-    for (const t of c.transactions) this.transactions.push({ ...t, createdAt: c.processedAt });
+    for (const t of c.transactions) {
+      this.transactions.push({ ...t, id: randomUUID(), remaining: t.points, createdAt: c.processedAt });
+    }
     s.status = 'CHECKED_OUT';
     s.pointsProcessedAt = c.processedAt;
     const current = this.tiers.get(c.guestId)?.rank ?? 0;

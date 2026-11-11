@@ -11,3 +11,4 @@ Memória do projeto. Para alterar uma decisão: crie novo ADR e marque o antigo 
 | [0005](0005-cpf-obrigatorio.md) | CPF obrigatório no cadastro | Aceita |
 | [0006](0006-api-e-protecao-de-documento.md) | API (Fastify) e proteção do CPF/passaporte | Aceita |
 | [0007](0007-credito-de-pontos-no-checkout.md) | Crédito de pontos no check-out e estadias manuais | Aceita |
+| [0008](0008-rotina-noturna.md) | Rotina noturna: vencimento, nível e avisos | Aceita |

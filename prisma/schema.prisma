@@ -111,6 +111,7 @@ model Guest {
   stays            Stay[]
   pointsTx         PointsTransaction[]
   redemptions      Redemption[]
+  expiryNotices    ExpiryNotice[]
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
   deletedAt        DateTime? // anonimização LGPD
@@ -196,6 +197,21 @@ model PointsTransaction {
 
   @@index([guestId, createdAt])
   @@index([guestId, expiresAt])
+}
+
+// Fila de avisos de pontos a vencer. A rotina noturna grava; o envio (e-mail/WhatsApp) lê daqui.
+model ExpiryNotice {
+  id         String    @id @default(uuid())
+  guestId    String
+  guest      Guest     @relation(fields: [guestId], references: [id])
+  windowDays Int // 90 ou 30
+  points     Int
+  expiresOn  DateTime  @db.Date // 1º vencimento dentro da janela
+  createdAt  DateTime  @default(now())
+  sentAt     DateTime?
+
+  @@unique([guestId, windowDays, expiresOn])
+  @@index([sentAt])
 }
 
 model Reward {

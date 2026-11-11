@@ -101,6 +101,23 @@ export interface StayRepository {
   commitCheckout(commit: CheckoutCommit): Promise<void>;
 }
 
+// ---- Rotina noturna (vencimento de pontos, nível, avisos) ----
+import type { ExpirationPlan, LotRow, NoticePlan } from '../domain/points/maintenance';
+
+export interface MaintenanceRepository {
+  /** Todos os lotes de pontos com saldo. */
+  loadActiveLots(): Promise<LotRow[]>;
+  /** Zera o lote e grava o lançamento EXPIRE. Devolve false se o lote mudou/já foi tratado. */
+  expireLot(item: ExpirationPlan): Promise<boolean>;
+  /** Hóspedes acima do nível inicial cuja validade do nível acabou (ou nunca foi definida). */
+  findTierReviewCandidates(now: Date): Promise<Array<{ guestId: string; tierRank: number }>>;
+  qualifyingPointsSince(guestId: string, since: Date): Promise<number>;
+  /** Aplica a revisão. Devolve false se o nível foi renovado por outro processo no meio. */
+  applyTierReview(guestId: string, newRank: number, validUntil: Date | null, now: Date): Promise<boolean>;
+  /** Grava avisos novos (ignora os já existentes). Devolve quantos foram criados. */
+  saveNotices(notices: NoticePlan[]): Promise<number>;
+}
+
 export interface GuestRepository {
   findByDocumentHash(hash: string): Promise<{ id: string } | null>;
   findByEmail(email: string): Promise<{ id: string } | null>;

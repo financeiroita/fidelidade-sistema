@@ -7,6 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "db:seed": "tsx prisma/seed.ts",
+    "job:nightly": "tsx src/jobs/nightly.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "db:up": "docker compose up -d db",

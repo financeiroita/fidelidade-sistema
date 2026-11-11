@@ -43,3 +43,6 @@ npm run dev              # http://localhost:3000
 Exigem o cabeçalho `x-api-key` com o valor de `INTERNAL_API_KEY`.
 - `POST /stays`: lança a estadia e o folio por categoria. Corpo: ver `src/domain/stays/stay.ts`.
 - `POST /stays/:id/checkout`: credita os pontos (uma única vez por estadia).
+
+### Rotina diária
+`npm run job:nightly` vence pontos, revisa níveis e gera os avisos de vencimento. Agende uma vez por dia (ver ADR 0008).

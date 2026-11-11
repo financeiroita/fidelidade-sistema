@@ -1,0 +1,142 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { runNightly } from '../../src/application/maintenance';
+import { planNotices, planTierReview, type LotRow } from '../../src/domain/points/maintenance';
+import { loyaltyConfig as cfg } from '../../src/config/loyalty';
+import { InMemoryMaintenanceRepository } from '../../src/infra/memory/maintenanceRepository';
+import { API_KEY, makeApp } from '../helpers';
+
+const headers = { 'x-api-key': API_KEY };
+const ana = {
+  fullName: 'Ana Souza',
+  email: 'ana@exemplo.com',
+  phone: '12988887777',
+  documentType: 'CPF',
+  document: '529.982.247-25',
+  birthDate: '1990-05-17',
+  acceptedTerms: true,
+};
+
+let clock: Date;
+let ctx: ReturnType<typeof makeApp>;
+let maint: InMemoryMaintenanceRepository;
+let seq = 0;
+
+/** Lança e conclui uma estadia na data atual do relógio de teste. */
+async function stayDone(guestId: string, amount: number) {
+  const day = clock.toISOString().slice(0, 10);
+  const prev = new Date(clock.getTime() - 3 * 86_400_000).toISOString().slice(0, 10);
+  const s = await ctx.app.inject({
+    method: 'POST',
+    url: '/stays',
+    headers,
+    payload: {
+      guestId,
+      channel: 'OTA',
+      checkIn: prev,
+      checkOut: day,
+      externalRef: `M-${++seq}`,
+      charges: [{ category: 'ROOM', amount }],
+    },
+  });
+  return (await ctx.app.inject({ method: 'POST', url: `/stays/${s.json().id}/checkout`, headers })).json();
+}
+const run = () => runNightly({ repo: maint, now: () => clock });
+
+beforeEach(() => {
+  clock = new Date('2026-03-01T12:00:00Z');
+  ctx = makeApp(undefined, () => clock);
+  maint = new InMemoryMaintenanceRepository(ctx.stays, ctx.guests);
+});
+
+const guest = async () => (await ctx.app.inject({ method: 'POST', url: '/guests', payload: ana })).json();
+
+describe('vencimento de pontos', () => {
+  it('expira o lote vencido uma única vez e zera o saldo', async () => {
+    const g = await guest();
+    await stayDone(g.id, 1000); // 1.000 pontos, vencem em 2028-03-01
+    clock = new Date('2028-03-02T00:00:00Z');
+    const r1 = await run();
+    expect(r1).toMatchObject({ expiredLots: 1, expiredPoints: 1000, errors: 0 });
+    expect(ctx.stays.balance(g.id)).toBe(0);
+    const r2 = await run();
+    expect(r2.expiredLots).toBe(0);
+    expect(ctx.stays.balance(g.id)).toBe(0);
+  });
+
+  it('não mexe em pontos que ainda não venceram', async () => {
+    const g = await guest();
+    await stayDone(g.id, 1000);
+    clock = new Date('2027-03-01T00:00:00Z');
+    expect((await run()).expiredLots).toBe(0);
+    expect(ctx.stays.balance(g.id)).toBe(1000);
+  });
+});
+
+describe('avisos de vencimento', () => {
+  it('gera um aviso na janela certa e não repete na rodada seguinte', async () => {
+    const g = await guest();
+    await stayDone(g.id, 1000); // vence 2028-03-01
+    clock = new Date('2027-12-20T00:00:00Z'); // faltam ~72 dias: janela de 90
+    expect((await run()).noticesCreated).toBe(1);
+    expect(maint.notices[0]).toMatchObject({ windowDays: 90, points: 1000 });
+    expect((await run()).noticesCreated).toBe(0);
+    clock = new Date('2028-02-10T00:00:00Z'); // faltam ~20 dias: janela de 30
+    expect((await run()).noticesCreated).toBe(1);
+    expect(maint.notices.map((n) => n.windowDays)).toEqual([90, 30]);
+  });
+
+  it('planNotices usa só a menor janela aplicável e soma os lotes dentro dela', () => {
+    const now = new Date('2026-01-01T00:00:00Z');
+    const d = (days: number) => new Date(now.getTime() + days * 86_400_000);
+    const lots: LotRow[] = [
+      { id: 'a', guestId: 'g', remaining: 100, expiresAt: d(10) },
+      { id: 'b', guestId: 'g', remaining: 200, expiresAt: d(50) },
+      { id: 'c', guestId: 'g', remaining: 400, expiresAt: d(200) },
+      { id: 'x', guestId: 'h', remaining: 50, expiresAt: d(400) },
+    ];
+    const plans = planNotices(lots, now, [90, 30]);
+    expect(plans).toHaveLength(1);
+    expect(plans[0]).toMatchObject({ guestId: 'g', windowDays: 30, points: 100 });
+  });
+});
+
+describe('revisão de nível', () => {
+  it('rebaixa quando a validade acaba sem pontos-base suficientes', async () => {
+    const g = await guest();
+    const r = await stayDone(g.id, 3500);
+    expect(r.tier).toBe('Prata');
+    clock = new Date('2027-03-02T00:00:00Z'); // 12 meses depois: validade vencida
+    const res = await run();
+    expect(res).toMatchObject({ tierReviews: 1, tierDowngrades: 1 });
+    expect(ctx.stays.tiers.get(g.id)).toMatchObject({ rank: 0 });
+  });
+
+  it('quem manteve o nível num novo check-out tem a validade renovada e não é rebaixado na data antiga', async () => {
+    const g = await guest();
+    await stayDone(g.id, 3500); // Prata até 2027-03-01
+    clock = new Date('2026-12-01T00:00:00Z');
+    await stayDone(g.id, 3000); // base na janela = 6.500: mantém e renova até 2027-12-01
+    expect(ctx.stays.tiers.get(g.id)!.validUntil!.toISOString().startsWith('2027-12-01')).toBe(true);
+    clock = new Date('2027-03-02T00:00:00Z');
+    expect((await run()).tierReviews).toBe(0);
+    expect(ctx.stays.tiers.get(g.id)!.rank).toBe(1);
+    clock = new Date('2027-12-02T00:00:00Z'); // sem atividade nos últimos 12 meses
+    expect(await run()).toMatchObject({ tierReviews: 1, tierDowngrades: 1 });
+  });
+
+  it('não revisa quem está dentro da validade', async () => {
+    const g = await guest();
+    await stayDone(g.id, 3500);
+    clock = new Date('2026-09-01T00:00:00Z');
+    expect((await run()).tierReviews).toBe(0);
+    expect(ctx.stays.tiers.get(g.id)!.rank).toBe(1);
+  });
+
+  it('planTierReview: Bronze fica sem validade; níveis pagos ganham 12 meses', () => {
+    const now = new Date('2026-01-01T00:00:00Z');
+    expect(planTierReview(100, now, cfg)).toEqual({ newRank: 0, validUntil: null });
+    const p = planTierReview(8000, now, cfg);
+    expect(p.newRank).toBe(2);
+    expect(p.validUntil!.toISOString().startsWith('2027-01-01')).toBe(true);
+  });
+});
