@@ -260,3 +260,55 @@ model Redemption {
 
   @@index([guestId, status])
 }
+
+enum OperatorRole {
+  RECEPTION
+  MANAGER
+  ADMIN
+}
+
+// Funcionário com login. Senha só como hash (scrypt); nunca em claro.
+model Operator {
+  id             String       @id @default(uuid())
+  username       String       @unique
+  name           String
+  role           OperatorRole
+  passwordHash   String
+  active         Boolean      @default(true)
+  failedAttempts Int          @default(0)
+  lockedUntil    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  sessions       Session[]
+}
+
+// Sessão de login. Guarda só o hash do token; quem tem o banco não consegue usar a sessão.
+model Session {
+  id         String   @id @default(uuid())
+  tokenHash  String   @unique
+  operatorId String
+  operator   Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([operatorId])
+  @@index([expiresAt])
+}
+
+// Registro de quem fez o quê. Sem vínculo (FK) com Operator, para o histórico sobreviver à remoção.
+// `details` só aceita valores simples (ids, contagens); nunca dados pessoais do hóspede.
+model AuditLog {
+  id           String   @id @default(uuid())
+  at           DateTime @default(now())
+  operatorId   String?
+  operatorName String?
+  action       String
+  entity       String?
+  entityId     String?
+  ok           Boolean  @default(true)
+  details      Json?
+
+  @@index([entity, entityId])
+  @@index([operatorId, at])
+  @@index([at])
+}

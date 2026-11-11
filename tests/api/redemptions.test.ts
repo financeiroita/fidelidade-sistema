@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { runNightly } from '../../src/application/maintenance';
 import { InMemoryMaintenanceRepository } from '../../src/infra/memory/maintenanceRepository';
-import { API_KEY, makeApp } from '../helpers';
+import { makeApp } from '../helpers';
 
-const headers = { 'x-api-key': API_KEY };
+let headers: Record<string, string>; // gerente de teste (ver tests/helpers.ts)
 const ana = {
   fullName: 'Ana Souza',
   email: 'ana@exemplo.com',
@@ -50,6 +50,7 @@ const balance = async (guestId: string) => (await get(`/guests/${guestId}/balanc
 beforeEach(() => {
   clock = new Date('2026-03-01T12:00:00Z');
   ctx = makeApp(undefined, () => clock);
+  headers = ctx.headers;
 });
 
 describe('catálogo', () => {

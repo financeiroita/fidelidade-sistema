@@ -13,3 +13,4 @@ Memória do projeto. Para alterar uma decisão: crie novo ADR e marque o antigo 
 | [0007](0007-credito-de-pontos-no-checkout.md) | Crédito de pontos no check-out e estadias manuais | Aceita |
 | [0008](0008-rotina-noturna.md) | Rotina noturna: vencimento, nível e avisos | Aceita |
 | [0009](0009-resgate-de-pontos.md) | Resgate de pontos, saldo e extrato | Aceita |
+| [0010](0010-login-de-funcionarios-e-auditoria.md) | Login de funcionários, permissões e auditoria | Aceita |

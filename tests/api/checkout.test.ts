@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { StayAlreadyProcessedError } from '../../src/application/ports';
-import { API_KEY, makeApp } from '../helpers';
+import { makeApp } from '../helpers';
 
-const headers = { 'x-api-key': API_KEY };
+let headers: Record<string, string>; // gerente de teste (ver tests/helpers.ts)
 const ana = {
   fullName: 'Ana Souza',
   email: 'ana@exemplo.com',
@@ -35,6 +35,7 @@ async function complete(guestId: string, charges: object[], channel = 'DIRECT_WE
 
 beforeEach(() => {
   ctx = makeApp(undefined, () => new Date('2026-07-13T12:00:00Z'));
+  headers = ctx.headers;
 });
 
 describe('segurança das rotas internas', () => {
@@ -42,7 +43,9 @@ describe('segurança das rotas internas', () => {
     const g = await signup(ana);
     const payload = { guestId: g.id, channel: 'PHONE', checkIn: '2026-07-10', checkOut: '2026-07-13', charges: [] };
     expect((await ctx.app.inject({ method: 'POST', url: '/stays', payload })).statusCode).toBe(401);
-    expect((await ctx.app.inject({ method: 'POST', url: '/stays', payload, headers: { 'x-api-key': 'errada' } })).statusCode).toBe(401);
+    const bad = { authorization: 'Bearer token-que-nao-existe-000000000000' };
+    expect((await ctx.app.inject({ method: 'POST', url: '/stays', payload, headers: bad })).statusCode).toBe(401);
+    expect((await ctx.app.inject({ method: 'POST', url: '/stays', payload, headers: { 'x-api-key': 'antiga' } })).statusCode).toBe(401);
     expect((await ctx.app.inject({ method: 'POST', url: '/stays/x/checkout' })).statusCode).toBe(401);
   });
 });

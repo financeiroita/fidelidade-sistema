@@ -32,3 +32,5 @@ Em aberto:
 2. Pedido repetido de um resgate cancelado devolve o resgate cancelado (não cria outro); quem chama deve olhar o `status`. Um novo pedido exige novo `requestId`.
 3. Lote sem validade (`expiresAt` nulo) nunca é utilizável nem vence; nenhum fluxo cria isso hoje.
 4. Testes com PostgreSQL real das travas, do P2002 e das restrições SQL.
+
+> Atualização (ADR 0010): a pendência "quem fez o quê" foi resolvida com login por funcionário e auditoria. Cancelar resgate agora exige o papel de gerente.

@@ -1,15 +1,37 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
-import Fastify, { type FastifyInstance } from 'fastify';
-import { processCheckout, registerStay, type LoyaltyDeps } from '../application/checkout';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
+  adminResetPassword,
+  audit,
+  authenticate,
+  changeOwnPassword,
+  createOperator,
+  listOperators,
+  login,
+  logout,
+  setOperatorActive,
+  type AuthDeps,
+} from '../application/auth';
+import { processCheckout, registerStay, type LoyaltyDeps } from '../application/checkout';
+import {
+  CannotDeactivateSelfError,
   DuplicateGuestError,
+  DuplicateOperatorError,
   DuplicateStayError,
   GuestNotFoundError,
+  InsufficientPointsError,
+  InvalidCredentialsError,
+  InvalidStayError,
+  InvalidTransitionError,
+  OperatorNotFoundError,
+  RedemptionNotFoundError,
+  RequestIdReusedError,
+  RewardNotAvailableError,
   StayNotEligibleError,
   StayNotFoundError,
+  TierTooLowError,
+  WeakPasswordError,
 } from '../application/ports';
-import { signupGuest, type SignupDeps } from '../application/signup';
 import {
   changeRedemption,
   createReward,
@@ -21,43 +43,92 @@ import {
   type RedemptionAction,
   type RewardDeps,
 } from '../application/redemptions';
-import { redeemSchema, rewardInputSchema, rewardPatchSchema, useSchema } from '../domain/rewards/reward';
+import { signupGuest, type SignupDeps } from '../application/signup';
 import {
-  InsufficientPointsError,
-  InvalidStayError,
-  InvalidTransitionError,
-  RedemptionNotFoundError,
-  RequestIdReusedError,
-  RewardNotAvailableError,
-  TierTooLowError,
-} from '../application/ports';
+  can,
+  changePasswordSchema,
+  createOperatorSchema,
+  loginSchema,
+  resetPasswordSchema,
+  type Permission,
+  type Principal,
+} from '../domain/auth/auth';
 import { signupSchema } from '../domain/guests/signup';
+import { redeemSchema, rewardInputSchema, rewardPatchSchema, useSchema } from '../domain/rewards/reward';
 import { stayInputSchema } from '../domain/stays/stay';
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    principal: Principal | null;
+    bearer: string | null;
+  }
+}
 
 export interface AppDeps {
   signup: SignupDeps;
   loyalty: LoyaltyDeps;
   rewards: RewardDeps;
-  /** Chave das rotas internas (recepção/PMS). Rotas públicas: /health e POST /guests. */
-  internalApiKey: string;
+  auth: AuthDeps;
 }
-
-const digest = (v: string) => createHash('sha256').update(v).digest();
-const validKey = (given: unknown, expected: string) =>
-  typeof given === 'string' && timingSafeEqual(digest(given), digest(expected));
 
 const validationError = (issues: Array<{ path: Array<string | number>; message: string }>) => ({
   error: 'validation_error',
   issues: issues.map((i) => ({ field: i.path.join('.'), message: i.message })),
 });
 
+const isUuid = (v: string) => z.string().uuid().safeParse(v).success;
+
 /** Monta a API. Recebe as dependências para poder ser testada sem banco. */
 export function buildApp(deps: AppDeps, opts: { logger?: boolean } = {}): FastifyInstance {
   const app = Fastify({
-    logger: opts.logger ? { redact: ['req.headers.authorization', 'req.headers["x-api-key"]'] } : false,
+    logger: opts.logger ? { redact: ['req.headers.authorization'] } : false,
     bodyLimit: 64 * 1024,
   });
+  app.decorateRequest('principal', null);
+  app.decorateRequest('bearer', null);
 
+  /** Registra no histórico de auditoria quem fez o quê (sem dados pessoais). */
+  const record = (
+    req: FastifyRequest,
+    action: string,
+    extra: Parameters<typeof audit>[3] = {},
+  ) =>
+    audit(deps.auth, req.principal, action, extra, (code) =>
+      app.log.error({ errCode: code }, 'falha ao gravar a auditoria'),
+    );
+
+  /** Exige a permissão; a tentativa negada fica registrada. */
+  const guard = (permission: Permission) => async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.principal || !can(req.principal.role, permission)) {
+      await record(req, 'auth.denied', { ok: false, details: { permission } });
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+  };
+
+  // Traduz os erros de negócio em respostas HTTP; o resto cai no tratador geral.
+  const businessError = (e: unknown, reply: FastifyReply) => {
+    if (e instanceof GuestNotFoundError) return reply.code(404).send({ error: 'guest_not_found' });
+    if (e instanceof RewardNotAvailableError) return reply.code(404).send({ error: 'reward_not_available' });
+    if (e instanceof RedemptionNotFoundError) return reply.code(404).send({ error: 'redemption_not_found' });
+    if (e instanceof OperatorNotFoundError) return reply.code(404).send({ error: 'operator_not_found' });
+    if (e instanceof TierTooLowError) return reply.code(403).send({ error: 'tier_too_low' });
+    if (e instanceof InsufficientPointsError) {
+      return reply.code(409).send({ error: 'insufficient_points', available: e.available });
+    }
+    if (e instanceof InvalidTransitionError) return reply.code(409).send({ error: 'invalid_transition' });
+    if (e instanceof InvalidStayError) return reply.code(422).send({ error: 'invalid_stay' });
+    if (e instanceof RequestIdReusedError) return reply.code(409).send({ error: 'request_id_reused' });
+    if (e instanceof DuplicateStayError) return reply.code(409).send({ error: 'duplicate_stay' });
+    if (e instanceof DuplicateOperatorError) return reply.code(409).send({ error: 'duplicate_operator' });
+    if (e instanceof CannotDeactivateSelfError) return reply.code(409).send({ error: 'cannot_deactivate_self' });
+    if (e instanceof StayNotFoundError) return reply.code(404).send({ error: 'stay_not_found' });
+    if (e instanceof StayNotEligibleError) return reply.code(409).send({ error: 'stay_not_eligible' });
+    if (e instanceof InvalidCredentialsError) return reply.code(401).send({ error: 'invalid_credentials' });
+    if (e instanceof WeakPasswordError) return reply.code(422).send({ error: 'weak_password', message: e.message });
+    throw e;
+  };
+
+  // ---------- Rotas públicas ----------
   app.get('/health', async () => ({ status: 'ok' }));
 
   app.post('/guests', async (req, reply) => {
@@ -73,7 +144,7 @@ export function buildApp(deps: AppDeps, opts: { logger?: boolean } = {}): Fastif
     }
   });
 
-  // Catálogo de prêmios: público, só o que o hóspede precisa ver.
+  // Catálogo de prêmios: só o que o hóspede precisa ver.
   app.get('/rewards', async () =>
     (await listRewards(deps.rewards)).map((r) => ({
       id: r.id,
@@ -85,95 +156,229 @@ export function buildApp(deps: AppDeps, opts: { logger?: boolean } = {}): Fastif
     })),
   );
 
-  // Rotas internas: exigem a chave no cabeçalho x-api-key.
+  app.post('/auth/login', async (req, reply) => {
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(401).send({ error: 'invalid_credentials' });
+    try {
+      const r = await login(deps.auth, parsed.data);
+      return reply.send({ token: r.token, expiresAt: r.expiresAt, operator: r.operator });
+    } catch (e) {
+      return businessError(e, reply);
+    }
+  });
+
+  // ---------- Rotas internas: exigem login (Authorization: Bearer <token>) ----------
   app.register(async (internal) => {
     internal.addHook('onRequest', async (req, reply) => {
-      if (!validKey(req.headers['x-api-key'], deps.internalApiKey)) {
-        return reply.code(401).send({ error: 'unauthorized' });
+      const m = /^Bearer ([A-Za-z0-9_-]{20,100})$/.exec(String(req.headers.authorization ?? ''));
+      const principal = m ? await authenticate(deps.auth, m[1]) : null;
+      if (!m || !principal) return reply.code(401).send({ error: 'unauthorized' });
+      req.principal = principal;
+      req.bearer = m[1];
+    });
+
+    // --- sessão e conta própria ---
+    internal.get('/auth/me', async (req) => req.principal);
+
+    internal.post('/auth/logout', async (req, reply) => {
+      await logout(deps.auth, req.bearer as string);
+      await record(req, 'auth.logout');
+      return reply.code(204).send();
+    });
+
+    internal.post('/auth/password', async (req, reply) => {
+      const parsed = changePasswordSchema.safeParse(req.body);
+      if (!parsed.success) return reply.code(422).send(validationError(parsed.error.issues));
+      try {
+        await changeOwnPassword(deps.auth, req.principal as Principal, req.bearer as string, parsed.data);
+        await record(req, 'auth.password-change');
+        return reply.code(204).send();
+      } catch (e) {
+        await record(req, 'auth.password-change', { ok: false });
+        return businessError(e, reply);
       }
     });
 
-    internal.post('/stays', async (req, reply) => {
+    // --- operadores (administrador) ---
+    internal.get('/operators', { preHandler: guard('operator:admin') }, async () => listOperators(deps.auth));
+
+    internal.post('/operators', { preHandler: guard('operator:admin') }, async (req, reply) => {
+      const parsed = createOperatorSchema.safeParse(req.body);
+      if (!parsed.success) return reply.code(422).send(validationError(parsed.error.issues));
+      try {
+        const op = await createOperator(deps.auth, parsed.data);
+        await record(req, 'operator.create', { entity: 'operator', entityId: op.operatorId, details: { role: op.role } });
+        return reply.code(201).send(op);
+      } catch (e) {
+        return businessError(e, reply);
+      }
+    });
+
+    for (const [path, active] of [['deactivate', false], ['activate', true]] as const) {
+      internal.post<{ Params: { id: string } }>(
+        `/operators/:id/${path}`,
+        { preHandler: guard('operator:admin') },
+        async (req, reply) => {
+          if (!isUuid(req.params.id)) return reply.code(404).send({ error: 'operator_not_found' });
+          try {
+            await setOperatorActive(deps.auth, req.principal as Principal, req.params.id, active);
+            await record(req, `operator.${path}`, { entity: 'operator', entityId: req.params.id });
+            return reply.code(204).send();
+          } catch (e) {
+            return businessError(e, reply);
+          }
+        },
+      );
+    }
+
+    internal.post<{ Params: { id: string } }>(
+      '/operators/:id/password',
+      { preHandler: guard('operator:admin') },
+      async (req, reply) => {
+        if (!isUuid(req.params.id)) return reply.code(404).send({ error: 'operator_not_found' });
+        const parsed = resetPasswordSchema.safeParse(req.body);
+        if (!parsed.success) return reply.code(422).send(validationError(parsed.error.issues));
+        try {
+          await adminResetPassword(deps.auth, req.params.id, parsed.data.password);
+          await record(req, 'operator.password-reset', { entity: 'operator', entityId: req.params.id });
+          return reply.code(204).send();
+        } catch (e) {
+          return businessError(e, reply);
+        }
+      },
+    );
+
+    // --- auditoria (gerente) ---
+    internal.get<{ Querystring: { entity?: string; entityId?: string; operatorId?: string; limit?: string } }>(
+      '/audit',
+      { preHandler: guard('audit:read') },
+      async (req) => {
+        const limit = Math.min(200, Math.max(1, Number.parseInt(req.query.limit ?? '50', 10) || 50));
+        const { entity, entityId, operatorId } = req.query;
+        return deps.auth.audit.list({ entity, entityId, operatorId, limit });
+      },
+    );
+
+    // --- estadias e check-out ---
+    internal.post('/stays', { preHandler: guard('stay:write') }, async (req, reply) => {
       const parsed = stayInputSchema.safeParse(req.body);
       if (!parsed.success) return reply.code(422).send(validationError(parsed.error.issues));
       try {
-        return reply.code(201).send(await registerStay(deps.loyalty, parsed.data));
+        const r = await registerStay(deps.loyalty, parsed.data);
+        await record(req, 'stay.create', { entity: 'stay', entityId: r.id, details: { channel: parsed.data.channel } });
+        return reply.code(201).send(r);
       } catch (e) {
-        if (e instanceof GuestNotFoundError) return reply.code(404).send({ error: 'guest_not_found' });
-        if (e instanceof DuplicateStayError) return reply.code(409).send({ error: 'duplicate_stay' });
-        throw e;
+        return businessError(e, reply);
       }
     });
 
-    const isUuid = (v: string) => z.string().uuid().safeParse(v).success;
+    internal.post<{ Params: { id: string } }>(
+      '/stays/:id/checkout',
+      { preHandler: guard('checkout:run') },
+      async (req, reply) => {
+        if (!isUuid(req.params.id)) return reply.code(404).send({ error: 'stay_not_found' });
+        try {
+          const r = await processCheckout(deps.loyalty, req.params.id);
+          await record(req, 'stay.checkout', {
+            entity: 'stay',
+            entityId: req.params.id,
+            details: { earned: r.earned, alreadyProcessed: r.alreadyProcessed },
+          });
+          return reply.send(r);
+        } catch (e) {
+          return businessError(e, reply);
+        }
+      },
+    );
 
-    // Traduz os erros de negócio do resgate em respostas HTTP; o resto cai no tratador geral.
-    const rewardError = (e: unknown, reply: import('fastify').FastifyReply) => {
-      if (e instanceof GuestNotFoundError) return reply.code(404).send({ error: 'guest_not_found' });
-      if (e instanceof RewardNotAvailableError) return reply.code(404).send({ error: 'reward_not_available' });
-      if (e instanceof RedemptionNotFoundError) return reply.code(404).send({ error: 'redemption_not_found' });
-      if (e instanceof TierTooLowError) return reply.code(403).send({ error: 'tier_too_low' });
-      if (e instanceof InsufficientPointsError) {
-        return reply.code(409).send({ error: 'insufficient_points', available: e.available });
-      }
-      if (e instanceof InvalidTransitionError) return reply.code(409).send({ error: 'invalid_transition' });
-      if (e instanceof InvalidStayError) return reply.code(422).send({ error: 'invalid_stay' });
-      if (e instanceof RequestIdReusedError) return reply.code(409).send({ error: 'request_id_reused' });
-      throw e;
-    };
-
-    internal.post('/rewards', async (req, reply) => {
+    // --- prêmios, resgates, saldo ---
+    internal.post('/rewards', { preHandler: guard('reward:write') }, async (req, reply) => {
       const parsed = rewardInputSchema.safeParse(req.body);
       if (!parsed.success) return reply.code(422).send(validationError(parsed.error.issues));
-      return reply.code(201).send(await createReward(deps.rewards, parsed.data));
+      const r = await createReward(deps.rewards, parsed.data);
+      await record(req, 'reward.create', { entity: 'reward', entityId: r.id, details: { pointsCost: r.pointsCost } });
+      return reply.code(201).send(r);
     });
 
-    internal.patch<{ Params: { id: string } }>('/rewards/:id', async (req, reply) => {
-      if (!isUuid(req.params.id)) return reply.code(404).send({ error: 'reward_not_available' });
-      const parsed = rewardPatchSchema.safeParse(req.body);
-      if (!parsed.success) return reply.code(422).send(validationError(parsed.error.issues));
-      try {
-        return reply.send(await updateReward(deps.rewards, req.params.id, parsed.data));
-      } catch (e) {
-        return rewardError(e, reply);
-      }
-    });
+    internal.patch<{ Params: { id: string } }>(
+      '/rewards/:id',
+      { preHandler: guard('reward:write') },
+      async (req, reply) => {
+        if (!isUuid(req.params.id)) return reply.code(404).send({ error: 'reward_not_available' });
+        const parsed = rewardPatchSchema.safeParse(req.body);
+        if (!parsed.success) return reply.code(422).send(validationError(parsed.error.issues));
+        try {
+          const r = await updateReward(deps.rewards, req.params.id, parsed.data);
+          await record(req, 'reward.update', {
+            entity: 'reward',
+            entityId: r.id,
+            details: { fields: Object.keys(parsed.data).join(',') },
+          });
+          return reply.send(r);
+        } catch (e) {
+          return businessError(e, reply);
+        }
+      },
+    );
 
-    internal.post('/redemptions', async (req, reply) => {
+    internal.post('/redemptions', { preHandler: guard('redemption:create') }, async (req, reply) => {
       const parsed = redeemSchema.safeParse(req.body);
       if (!parsed.success) return reply.code(422).send(validationError(parsed.error.issues));
       try {
         const { redemption, replay } = await redeem(deps.rewards, parsed.data);
+        if (!replay) {
+          await record(req, 'redemption.create', {
+            entity: 'redemption',
+            entityId: redemption.id,
+            details: { points: redemption.points },
+          });
+        }
         return reply.code(replay ? 200 : 201).send({ ...redemption, replay });
       } catch (e) {
-        return rewardError(e, reply);
+        return businessError(e, reply);
       }
     });
 
+    const permissionOf = { confirm: 'redemption:confirm', use: 'redemption:use', cancel: 'redemption:cancel' } as const;
     for (const action of ['confirm', 'use', 'cancel'] as RedemptionAction[]) {
-      internal.post<{ Params: { id: string } }>(`/redemptions/:id/${action}`, async (req, reply) => {
-        if (!isUuid(req.params.id)) return reply.code(404).send({ error: 'redemption_not_found' });
-        const body = useSchema.safeParse(req.body ?? {});
-        if (!body.success) return reply.code(422).send(validationError(body.error.issues));
-        try {
-          return reply.send(await changeRedemption(deps.rewards, req.params.id, action, body.data));
-        } catch (e) {
-          return rewardError(e, reply);
-        }
-      });
+      internal.post<{ Params: { id: string } }>(
+        `/redemptions/:id/${action}`,
+        { preHandler: guard(permissionOf[action]) },
+        async (req, reply) => {
+          if (!isUuid(req.params.id)) return reply.code(404).send({ error: 'redemption_not_found' });
+          const body = useSchema.safeParse(req.body ?? {});
+          if (!body.success) return reply.code(422).send(validationError(body.error.issues));
+          try {
+            const r = await changeRedemption(deps.rewards, req.params.id, action, body.data);
+            await record(req, `redemption.${action}`, {
+              entity: 'redemption',
+              entityId: r.id,
+              details: { points: r.points, status: r.status },
+            });
+            return reply.send(r);
+          } catch (e) {
+            return businessError(e, reply);
+          }
+        },
+      );
     }
 
-    internal.get<{ Params: { id: string } }>('/guests/:id/balance', async (req, reply) => {
-      if (!isUuid(req.params.id)) return reply.code(404).send({ error: 'guest_not_found' });
-      try {
-        return reply.send(await getBalance(deps.rewards, req.params.id));
-      } catch (e) {
-        return rewardError(e, reply);
-      }
-    });
+    internal.get<{ Params: { id: string } }>(
+      '/guests/:id/balance',
+      { preHandler: guard('guest:read-points') },
+      async (req, reply) => {
+        if (!isUuid(req.params.id)) return reply.code(404).send({ error: 'guest_not_found' });
+        try {
+          return reply.send(await getBalance(deps.rewards, req.params.id));
+        } catch (e) {
+          return businessError(e, reply);
+        }
+      },
+    );
 
     internal.get<{ Params: { id: string }; Querystring: { limit?: string } }>(
       '/guests/:id/statement',
+      { preHandler: guard('guest:read-points') },
       async (req, reply) => {
         if (!isUuid(req.params.id)) return reply.code(404).send({ error: 'guest_not_found' });
         const limit = Math.min(200, Math.max(1, Number.parseInt(req.query.limit ?? '50', 10) || 50));
@@ -181,21 +386,10 @@ export function buildApp(deps: AppDeps, opts: { logger?: boolean } = {}): Fastif
           await getBalance(deps.rewards, req.params.id); // 404 se o hóspede não existe
           return reply.send(await getStatement(deps.rewards, req.params.id, limit));
         } catch (e) {
-          return rewardError(e, reply);
+          return businessError(e, reply);
         }
       },
     );
-
-    internal.post<{ Params: { id: string } }>('/stays/:id/checkout', async (req, reply) => {
-      if (!z.string().uuid().safeParse(req.params.id).success) return reply.code(404).send({ error: 'stay_not_found' });
-      try {
-        return reply.send(await processCheckout(deps.loyalty, req.params.id));
-      } catch (e) {
-        if (e instanceof StayNotFoundError) return reply.code(404).send({ error: 'stay_not_found' });
-        if (e instanceof StayNotEligibleError) return reply.code(409).send({ error: 'stay_not_eligible' });
-        throw e;
-      }
-    });
   });
 
   // Nunca devolve detalhes internos nem dados do corpo da requisição.

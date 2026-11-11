@@ -35,12 +35,13 @@ Modelo de dados: `prisma/schema.prisma` e `docs/modelo-de-dados.md`. Regras: `do
 ```bash
 cp .env.example .env     # preencha DOCUMENT_HASH_SECRET (>= 32 caracteres)
 npm run db:up && npm run db:migrate && npm run db:seed
+npm run operator:create -- --username SEU_USUARIO --name "Seu Nome" --role ADMIN
 npm run dev              # http://localhost:3000
 ```
 `POST /guests` cadastra um hóspede (corpo: ver `src/domain/guests/signup.ts`). `GET /health` verifica a API.
 
-### Rotas internas (recepção)
-Exigem o cabeçalho `x-api-key` com o valor de `INTERNAL_API_KEY`.
+### Rotas internas (recepção): exigem login
+Exigem `Authorization: Bearer <token>` (token do `POST /auth/login`). Crie o primeiro administrador com `npm run operator:create` (ADR 0010).
 - `POST /stays`: lança a estadia e o folio por categoria. Corpo: ver `src/domain/stays/stay.ts`.
 - `POST /stays/:id/checkout`: credita os pontos (uma única vez por estadia).
 

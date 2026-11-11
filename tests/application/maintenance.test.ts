@@ -3,9 +3,9 @@ import { runNightly } from '../../src/application/maintenance';
 import { planNotices, planTierReview, type LotRow } from '../../src/domain/points/maintenance';
 import { loyaltyConfig as cfg } from '../../src/config/loyalty';
 import { InMemoryMaintenanceRepository } from '../../src/infra/memory/maintenanceRepository';
-import { API_KEY, makeApp } from '../helpers';
+import { makeApp } from '../helpers';
 
-const headers = { 'x-api-key': API_KEY };
+let headers: Record<string, string>; // gerente de teste (ver tests/helpers.ts)
 const ana = {
   fullName: 'Ana Souza',
   email: 'ana@exemplo.com',
@@ -45,6 +45,7 @@ const run = () => runNightly({ repo: maint, now: () => clock });
 beforeEach(() => {
   clock = new Date('2026-03-01T12:00:00Z');
   ctx = makeApp(undefined, () => clock);
+  headers = ctx.headers;
   maint = new InMemoryMaintenanceRepository(ctx.stays, ctx.guests, () => clock);
 });
 

@@ -35,3 +35,5 @@ Decisões do hotel em aberto:
 3. ~~Nível vencido~~: resolvido no ADR 0008 (rotina noturna) e no check-out, que ignora o multiplicador de nível vencido.
 
 Segurança ainda pendente: usuário individual por funcionário e registro de quem lançou (`createdBy`); limite de requisições nas rotas internas; restringir essas rotas por rede/IP.
+
+> Atualização (ADR 0010): a chave interna única foi substituída por login por funcionário, com papéis e auditoria.

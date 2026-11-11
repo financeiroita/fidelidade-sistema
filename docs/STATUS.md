@@ -8,5 +8,6 @@ _Atualizado: 2026-11-11_
 - Feito: crédito de pontos no check-out e estadias manuais (ADR 0007, auditado, 47 testes; nível por pontos-base).
 - Feito: rotina noturna (vencimento de pontos, revisão de nível, avisos gravados) (ADR 0008, auditada, 62 testes).
 - Feito: resgate, saldo e extrato (ADR 0009, auditado, 88 testes).
+- Feito: login por funcionário, papéis e auditoria (ADR 0010, 109 testes).
 - Pendente: cadastrar o catálogo real de prêmios; envio dos avisos; bônus de aniversário; resgates; saldo e extrato; criar migração e testar com banco; auditoria de segurança (ADR 0006); rate limit/CORS; levantar API do Erbon; crédito de pontos no check-out; bônus do indicador; jobs de expiração e aniversário; GitHub (`gh auth login`).
 - Decisões do hotel em aberto: `docs/perguntas-em-aberto.md`.

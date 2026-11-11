@@ -235,3 +235,59 @@ export interface GuestRepository {
   /** Cria o hóspede com o nível inicial. */
   create(guest: NewGuest): Promise<void>;
 }
+
+// ---- Login de funcionários e registro de quem fez o quê ----
+import type { Role } from '../domain/auth/auth';
+
+export interface OperatorRow {
+  id: string;
+  username: string;
+  name: string;
+  role: Role;
+  passwordHash: string;
+  active: boolean;
+  failedAttempts: number;
+  lockedUntil: Date | null;
+}
+
+export class InvalidCredentialsError extends Error {}
+export class UnauthorizedError extends Error {}
+export class ForbiddenError extends Error {}
+export class DuplicateOperatorError extends Error {}
+export class OperatorNotFoundError extends Error {}
+export class WeakPasswordError extends Error {}
+export class CannotDeactivateSelfError extends Error {}
+
+export interface AuthRepository {
+  findOperatorByUsername(username: string): Promise<OperatorRow | null>;
+  findOperatorById(id: string): Promise<OperatorRow | null>;
+  createOperator(op: OperatorRow): Promise<void>;
+  listOperators(): Promise<Array<Omit<OperatorRow, 'passwordHash' | 'failedAttempts'>>>;
+  /** Conta uma falha; ao chegar em `max`, trava até `lockUntil` e zera o contador. Atômico. */
+  recordLoginFailure(id: string, max: number, lockUntil: Date): Promise<void>;
+  recordLoginSuccess(id: string): Promise<void>;
+  setPassword(id: string, passwordHash: string): Promise<void>;
+  setActive(id: string, active: boolean): Promise<void>;
+  createSession(s: { tokenHash: string; operatorId: string; expiresAt: Date }): Promise<void>;
+  findSession(tokenHash: string): Promise<{ operatorId: string; expiresAt: Date } | null>;
+  deleteSession(tokenHash: string): Promise<void>;
+  /** Encerra as sessões do funcionário (todas, ou todas menos a informada). */
+  deleteSessionsOf(operatorId: string, exceptTokenHash?: string): Promise<void>;
+}
+
+/** Só valores simples (ids, contagens, pontos). Nunca dados pessoais do hóspede. */
+export type AuditDetails = Record<string, string | number | boolean | null>;
+export interface AuditEntry {
+  at: Date;
+  operatorId: string | null;
+  operatorName: string | null;
+  action: string;
+  entity?: string;
+  entityId?: string;
+  ok: boolean;
+  details?: AuditDetails;
+}
+export interface AuditRepository {
+  record(entry: AuditEntry): Promise<void>;
+  list(filter: { entity?: string; entityId?: string; operatorId?: string; limit: number }): Promise<AuditEntry[]>;
+}

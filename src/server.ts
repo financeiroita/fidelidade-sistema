@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from './api/app';
+import { PrismaAuditRepository, PrismaAuthRepository } from './infra/prisma/authRepository';
 import { PrismaGuestRepository } from './infra/prisma/guestRepository';
 import { PrismaRewardRepository } from './infra/prisma/rewardRepository';
 import { PrismaStayRepository } from './infra/prisma/stayRepository';
@@ -13,11 +14,6 @@ if (!strongSecret(secret, 32)) {
   console.error('Defina DOCUMENT_HASH_SECRET no .env: mínimo 32 caracteres aleatórios e variados.');
   process.exit(1);
 }
-const internalApiKey = process.env.INTERNAL_API_KEY;
-if (!strongSecret(internalApiKey, 24)) {
-  console.error('Defina INTERNAL_API_KEY no .env: mínimo 24 caracteres aleatórios e variados.');
-  process.exit(1);
-}
 
 const prisma = new PrismaClient();
 const app = buildApp(
@@ -25,7 +21,7 @@ const app = buildApp(
     signup: { repo: new PrismaGuestRepository(prisma), documentSecret: secret },
     loyalty: { stays: new PrismaStayRepository(prisma) },
     rewards: { repo: new PrismaRewardRepository(prisma) },
-    internalApiKey,
+    auth: { repo: new PrismaAuthRepository(prisma), audit: new PrismaAuditRepository(prisma) },
   },
   { logger: true },
 );
@@ -36,6 +32,11 @@ async function start() {
   // O cadastro precisa do nível inicial (rank 0); sem o seed, falharia com erro 500.
   if (!(await prisma.tier.findUnique({ where: { rank: 0 } }))) {
     console.error('Níveis não encontrados. Rode: npm run db:seed');
+    process.exit(1);
+  }
+  // Sem nenhum administrador ninguém consegue entrar: avisa como criar o primeiro.
+  if ((await prisma.operator.count({ where: { role: 'ADMIN', active: true } })) === 0) {
+    console.error('Nenhum administrador ativo. Rode: npm run operator:create -- --username SEU_USUARIO --name "Seu Nome" --role ADMIN');
     process.exit(1);
   }
   await app.listen({ port, host: '0.0.0.0' });
