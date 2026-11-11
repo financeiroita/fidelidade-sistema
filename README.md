@@ -30,3 +30,11 @@ npm run db:up && npm run db:migrate
 npm test
 ```
 Modelo de dados: `prisma/schema.prisma` e `docs/modelo-de-dados.md`. Regras: `docs/decisions/0003-regras-de-pontos.md`.
+
+## API
+```bash
+cp .env.example .env     # preencha DOCUMENT_HASH_SECRET (>= 32 caracteres)
+npm run db:up && npm run db:migrate && npm run db:seed
+npm run dev              # http://localhost:3000
+```
+`POST /guests` cadastra um hóspede (corpo: ver `src/domain/guests/signup.ts`). `GET /health` verifica a API.

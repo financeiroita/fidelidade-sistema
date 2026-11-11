@@ -7,6 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum DocumentType {
+  CPF
+  PASSPORT
+}
+
 enum StaySource {
   PMS
   MANUAL
@@ -80,7 +85,9 @@ model Guest {
   fullName         String
   email            String?             @unique
   phone            String?
-  document         String              @unique // CPF/passaporte; proteger (LGPD)
+  documentType     DocumentType
+  document         String              @unique // HMAC do CPF/passaporte, nunca em claro (ADR 0006)
+  documentLast4    String // últimos 4 caracteres, para exibir mascarado
   birthDate        DateTime?           @db.Date
   nationality      String?
   city             String?

@@ -2,9 +2,7 @@
 
 _Atualizado: 2026-11-11_
 
-- Feito: ADR 0002/0003, schema Prisma, regras de pontos/níveis/expiração (funções puras) e testes.
-- Página visual das regras para hóspedes: docs/comunicacao/programa-fidelidade.html (rascunho).
-- Página de cadastro do hóspede (demonstração): docs/comunicacao/cadastro-hospede.html.
-- Pendente: levantar API do Erbon; decidir calibragem (ADR 0004); migração do banco; API; jobs de expiração e aniversário.
-- GitHub: aguardando `gh auth login`.
-- Perguntas em aberto: `docs/perguntas-em-aberto.md`.
+- Feito: ADRs 0001-0006; schema Prisma; regras de pontos/níveis/expiração (testadas); páginas de demonstração (programa e cadastro em docs/comunicacao/); API `POST /guests` com CPF protegido por HMAC (25 testes passando, repositório em memória).
+- Não verificado: repositório Prisma contra um PostgreSQL real (ainda sem migração nem Docker rodando).
+- Pendente: criar migração e testar com banco; auditoria de segurança (ADR 0006); rate limit/CORS; levantar API do Erbon; crédito de pontos no check-out; bônus do indicador; jobs de expiração e aniversário; GitHub (`gh auth login`).
+- Decisões do hotel em aberto: `docs/perguntas-em-aberto.md`.
