@@ -164,6 +164,23 @@ describe('proteção contra rajada e adivinhação', () => {
     expect(codes).toEqual([201, 201, 429]);
   });
 
+  it('atrás de 1 proxy, inventar o IP no X-Forwarded-For não fura o limite', async () => {
+    ctx = makeApp(undefined, () => clock, { login: 100, password: 100, guests: 2 }, 1);
+    const codes = [];
+    for (let i = 0; i < 3; i++) {
+      const res = await ctx.app.inject({
+        method: 'POST',
+        url: '/guests',
+        remoteAddress: '10.0.0.1', // o proxy do hotel
+        // O cliente inventa um IP diferente a cada pedido; o proxy acrescenta o IP real no fim.
+        headers: { 'x-forwarded-for': `203.0.113.${i}, 198.51.100.7` },
+        payload: { ...ana, email: `p${i}@example.com`, document: ['529.982.247-25', '111.444.777-35', '168.995.350-09'][i] },
+      });
+      codes.push(res.statusCode);
+    }
+    expect(codes).toEqual([201, 201, 429]);
+  });
+
   it('corpo grande demais nas rotas de senha é recusado', async () => {
     const big = { username: 'maria', password: 'x'.repeat(2000) };
     expect((await call('POST', '/auth/login', big)).statusCode).toBeGreaterThanOrEqual(400);
@@ -358,7 +375,7 @@ describe('registro de auditoria', () => {
       await call(
         'POST',
         '/stays',
-        { guestId: g.id, channel: 'OTA', checkIn: '2026-07-10', checkOut: '2026-07-12', externalRef: 'A-1', charges: [{ category: 'ROOM', amount: 2000 }] },
+        { guestId: g.id, channel: 'OTA', checkIn: '2026-07-11', checkOut: '2026-07-13', externalRef: 'A-1', charges: [{ category: 'ROOM', amount: 2000 }] },
         rec.headers,
       )
     ).json();
@@ -381,7 +398,7 @@ describe('registro de auditoria', () => {
   it('filtra por entidade e respeita o limite; pedido repetido não duplica o registro', async () => {
     const g = (await call('POST', '/guests', ana)).json();
     const reward = (await call('POST', '/rewards', { name: 'Café', type: 'DINING', pointsCost: 1 }, ctx.headers)).json();
-    const stay = (await call('POST', '/stays', { guestId: g.id, channel: 'OTA', checkIn: '2026-07-10', checkOut: '2026-07-12', externalRef: 'A-9', charges: [{ category: 'ROOM', amount: 500 }] }, ctx.headers)).json();
+    const stay = (await call('POST', '/stays', { guestId: g.id, channel: 'OTA', checkIn: '2026-07-11', checkOut: '2026-07-13', externalRef: 'A-9', charges: [{ category: 'ROOM', amount: 500 }] }, ctx.headers)).json();
     await call('POST', `/stays/${stay.id}/checkout`, undefined, ctx.headers);
     const body = { guestId: g.id, rewardId: reward.id, requestId: 'repetido-123456' };
     await call('POST', '/redemptions', body, ctx.headers);
@@ -414,7 +431,7 @@ describe('registro de auditoria', () => {
 
   it('a criação de estadia guarda o hóspede e o total (só números e ids)', async () => {
     const g = (await call('POST', '/guests', ana)).json();
-    await call('POST', '/stays', { guestId: g.id, channel: 'PHONE', checkIn: '2026-07-10', checkOut: '2026-07-12', externalRef: 'T-1', charges: [{ category: 'ROOM', amount: 1500.5 }] }, ctx.headers);
+    await call('POST', '/stays', { guestId: g.id, channel: 'PHONE', checkIn: '2026-07-11', checkOut: '2026-07-13', externalRef: 'T-1', charges: [{ category: 'ROOM', amount: 1500.5 }] }, ctx.headers);
     const e = ctx.auditRepo.entries.find((x) => x.action === 'stay.create')!;
     expect(e.details).toEqual({ guestId: g.id, channel: 'PHONE', total: 1500.5 });
   });
@@ -422,7 +439,7 @@ describe('registro de auditoria', () => {
   it('se a gravação da auditoria falhar, a operação já feita continua valendo', async () => {
     const g = (await call('POST', '/guests', ana)).json();
     ctx.auditRepo.failNext = true;
-    const res = await call('POST', '/stays', { guestId: g.id, channel: 'OTA', checkIn: '2026-07-10', checkOut: '2026-07-12', externalRef: 'A-7', charges: [] }, ctx.headers);
+    const res = await call('POST', '/stays', { guestId: g.id, channel: 'OTA', checkIn: '2026-07-11', checkOut: '2026-07-13', externalRef: 'A-7', charges: [] }, ctx.headers);
     expect(res.statusCode).toBe(201);
   });
 

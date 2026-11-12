@@ -73,6 +73,9 @@ footer{border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}
 @media (prefers-reduced-motion:no-preference){.cta{transition:transform .15s}.cta:hover{transform:translateY(-2px)}}
 </style>
 
+<!-- AVISO INTERNO (não visível ao hóspede): RASCUNHO — ainda não implementado no sistema: bônus de aniversário,
+     campanhas, envio de avisos de vencimento, estorno de pontos após o check-out.
+     Não publicar sem decidir (ver docs/perguntas-em-aberto.md). -->
 <div class="draft">Rascunho para aprovação. Valores e benefícios entre colchetes ainda serão confirmados pelo hotel.</div>
 
 <header class="hero"><div class="wrap">
@@ -90,7 +93,7 @@ footer{border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}
     <div class="earn"><div class="big">1 <small>ponto / R$ 1</small></div><h3>Restaurante e bar</h3><p>Em todo consumo na conta do quarto.</p></div>
     <div class="earn"><div class="big">1 <small>ponto / R$ 1</small></div><h3>Spa</h3><p>Massagens e tratamentos.</p></div>
     <div class="earn"><div class="big">1 <small>ponto / R$ 2</small></div><h3>Eventos</h3><p>Casamentos, celebrações e reuniões.</p></div>
-    <div class="earn feature"><div class="big">+20%</div><h3>Reserva direta</h3><p>Reservou pelo site, telefone ou WhatsApp do hotel? Ganhe 20% de pontos extras na hospedagem.</p></div>
+    <div class="earn feature"><div class="big">+20%</div><h3>Reserva direta</h3><p>Reservou pelo site, telefone, WhatsApp ou no balcão do hotel? Ganhe um bônus de 20% sobre os pontos-base das diárias.</p></div>
     <div class="earn"><div class="big">500</div><h3>Presente de aniversário</h3><p>Pontos creditados no mês do seu aniversário.</p></div>
     <div class="earn"><div class="big">1.000</div><h3>Indique um amigo</h3><p>Você ganha 1.000 pontos depois da primeira estadia dele, e ele ganha 500 após o primeiro check-out.</p></div>
     <div class="earn"><div class="big">2x</div><h3>Campanhas</h3><p>Pontos em dobro e bônus em datas selecionadas.</p></div>
@@ -133,7 +136,7 @@ footer{border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}
     <div class="tier"><h3>Ouro</h3><div class="mult">1,5x<small>50% a mais</small></div><p>[8.000] pontos em 12 meses.</p><div class="bar"><i style="width:60%"></i></div></div>
     <div class="tier"><h3>Diamante</h3><div class="mult">2x<small>o dobro</small></div><p>[20.000] pontos em 12 meses.</p><div class="bar"><i style="width:100%"></i></div></div>
   </div>
-  <p class="note">Cada nível também traz benefícios exclusivos, como [late check-out, upgrade sujeito à disponibilidade, welcome drink]. Para subir de nível contam os pontos-base, ou seja, o valor gasto sem multiplicadores. Pontos de bônus (reserva direta, aniversário, indicação, campanhas) entram no saldo, mas não contam para o nível.</p>
+  <p class="note">Cada nível também traz benefícios exclusivos, como [late check-out, upgrade sujeito à disponibilidade, welcome drink]. Para subir de nível contam os pontos-base, ou seja, o valor gasto sem multiplicadores. Pontos de bônus (reserva direta, aniversário, indicação, campanhas) entram no saldo, mas não contam para o nível. A estadia em que você sobe de nível pontua no nível anterior; o novo nível vale a partir da próxima.</p>
 </div></section>
 
 <section class="band"><div class="wrap">
@@ -179,10 +182,14 @@ footer{border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}
     $('total').textContent=fmt(total);
     var rows=[['Hospedagem',room],['Restaurante e bar',fnb],['Spa',spa],['Bônus reserva direta',bonus]].filter(function(r){return r[1]>0});
     $('lines').innerHTML=rows.map(function(r){return '<li><span>'+r[0]+'</span><span>'+fmt(r[1])+'</span></li>'}).join('');
-    var next=[['Prata',3000],['Ouro',8000],['Diamante',20000]];
-    var qual=room+fnb+spa, msg='';
-    for(var i=0;i<next.length;i++){ if(qual<next[i].slice(-1)[0]){ msg='Esta estadia leva você a '+Math.round(qual/next[i][1]*100)+'% do nível '+next[i][0]+'.'; break; } }
-    $('hint').textContent=msg||'Esta estadia sozinha já alcança o nível Diamante.';
+    // Nível conta só pontos-base (valor gasto, sem multiplicador do nível e sem bônus). ADR 0003/0007.
+    var qual=roomBase+Math.floor(money($('fnb').value))+Math.floor(money($('spa').value));
+    var tiers=[['Bronze',0],['Prata',3000],['Ouro',8000],['Diamante',20000]];
+    var next=tiers[$('tier').selectedIndex+1], msg;
+    if(!next){ msg='Esta estadia soma '+fmt(qual)+' pontos-base. Você já está no nível máximo (Diamante).'; }
+    else if(qual>=next[1]){ msg='Esta estadia sozinha soma '+fmt(qual)+' pontos-base e já alcança o nível '+next[0]+'.'; }
+    else { msg='Esta estadia soma '+fmt(qual)+' pontos-base: '+Math.floor(qual/next[1]*100)+'% do caminho para o nível '+next[0]+' ('+fmt(next[1])+' em 12 meses).'; }
+    $('hint').textContent=msg;
   }
   document.getElementById('calc').addEventListener('input',calc);
   calc();

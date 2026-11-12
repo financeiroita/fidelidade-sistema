@@ -16,7 +16,7 @@
 ## Limitações
 - Não há autenticação do próprio hóspede: o resgate é feito por um funcionário com login (ver ADR 0010). Um app/site do hóspede exige login de hóspede (decisão futura).
 - Não há validade do resgate (ex.: prazo para usar o voucher) nem estoque/limite por prêmio.
-- Não testado contra PostgreSQL real.
+- Testado em PostgreSQL 18 embutido (`npm run test:integration`); falta validar no 16 do docker-compose.
 
 ## Auditoria de 2026-11-11
 Corrigido:
@@ -28,9 +28,9 @@ Corrigido:
 - A memória valida antes de gravar (como o banco).
 
 Em aberto:
-1. **Quem fez o quê:** a chave interna é única e compartilhada; falta ator por operador (`x-actor` ou chave por pessoa) gravado em resgate, confirmação e cancelamento. Cancelar devolve pontos, então isso deve vir antes da produção (junto com o login por funcionário do ADR 0007).
+1. ~~**Quem fez o quê:** a chave interna é única e compartilhada; falta ator por operador (`x-actor` ou chave por pessoa) gravado em resgate, confirmação e cancelamento.~~ Resolvido no ADR 0010: login por funcionário e auditoria (o cabeçalho `x-actor` nunca foi adotado).
 2. Pedido repetido de um resgate cancelado devolve o resgate cancelado (não cria outro); quem chama deve olhar o `status`. Um novo pedido exige novo `requestId`.
 3. Lote sem validade (`expiresAt` nulo) nunca é utilizável nem vence; nenhum fluxo cria isso hoje.
-4. Testes com PostgreSQL real das travas, do P2002 e das restrições SQL.
+4. ~~Testes com PostgreSQL real das travas, do P2002 e das restrições SQL.~~ Feito: testado em PostgreSQL 18 embutido (`npm run test:integration`); falta validar no 16 do docker-compose.
 
 > Atualização (ADR 0010): a pendência "quem fez o quê" foi resolvida com login por funcionário e auditoria. Cancelar resgate agora exige o papel de gerente.

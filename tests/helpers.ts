@@ -16,6 +16,7 @@ export function makeApp(
   repo: GuestRepository = new InMemoryGuestRepository(),
   now?: () => Date,
   limits: { login?: number; password?: number; guests?: number } = { login: HIGH, password: HIGH, guests: HIGH },
+  trustProxy?: number,
 ) {
   const guests = repo as InMemoryGuestRepository;
   const stays = new InMemoryStayRepository(guests);
@@ -30,7 +31,7 @@ export function makeApp(
       rewards: { repo: rewards, now },
       auth,
     },
-    { limits },
+    { limits, trustProxy },
   );
 
   let n = 0;

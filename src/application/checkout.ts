@@ -3,12 +3,13 @@ import { loyaltyConfig, type LoyaltyConfig } from '../config/loyalty';
 import { calculateStayPoints, totalPoints } from '../domain/points/earn';
 import { expirationDate } from '../domain/points/expiry';
 import { isDirectChannel, nightsBetween, type StayInput } from '../domain/stays/stay';
-import { addMonths } from '../domain/time';
+import { addDays, addMonths, localDate } from '../domain/time';
 import { resolveTier } from '../domain/tiers/tier';
 import {
   StayAlreadyProcessedError,
   StayNotEligibleError,
   StayNotFoundError,
+  StayOutOfPeriodError,
   type CheckoutCommit,
   type CheckoutData,
   type NewPointsTx,
@@ -22,8 +23,20 @@ export interface LoyaltyDeps {
 }
 
 
-/** Registra uma estadia lançada manualmente (recepção). Ainda não gera pontos. */
+/**
+ * Registra uma estadia lançada manualmente (recepção). Ainda não gera pontos.
+ * Recusa estadia antiga demais (mais de `manualStayMaxDaysBack` dias depois do check-out) e estadia
+ * que terminou antes do cadastro do hóspede (ADR 0004: estadias anteriores ao cadastro não pontuam).
+ */
 export async function registerStay(deps: LoyaltyDeps, input: StayInput): Promise<{ id: string; nights: number }> {
+  const cfg = deps.config ?? loyaltyConfig;
+  const now = (deps.now ?? (() => new Date()))();
+  const today = localDate(now, cfg.timeZone);
+  if (input.checkOut < addDays(today, -cfg.manualStayMaxDaysBack)) {
+    throw new StayOutOfPeriodError(`Só é possível lançar estadias com check-out nos últimos ${cfg.manualStayMaxDaysBack} dias.`);
+  }
+  // Datas da estadia já são do calendário do hotel; a data de cadastro é convertida para o fuso do hotel.
+  const allowed = (memberSince: Date) => input.checkOut >= localDate(memberSince, cfg.timeZone);
   const id = randomUUID();
   const nights = nightsBetween(input.checkIn, input.checkOut);
   await deps.stays.createStay({
@@ -39,7 +52,7 @@ export async function registerStay(deps: LoyaltyDeps, input: StayInput): Promise
     children: input.children,
     externalRef: input.externalRef,
     charges: input.charges,
-  });
+  }, allowed);
   return { id, nights };
 }
 
@@ -92,7 +105,7 @@ export function planCheckout(
       });
       clearWelcomePending = true;
     }
-    if (guest.referredById) {
+    if (guest.referredById && guest.referrerActive) {
       transactions.push({
         guestId: guest.referredById,
         type: 'EARN_BONUS',
@@ -105,18 +118,19 @@ export function planCheckout(
     }
   }
 
+  // Prévia (para a resposta); a decisão que vale é tomada pelo repositório sob a trava do hóspede,
+  // com os pontos-base relidos (outro check-out simultâneo pode ter acabado de somar pontos).
   const qualifyingNow = qualifyingBefore + lines.reduce((s, l) => s + l.qualifyingPts, 0);
   const reached = resolveTier(qualifyingNow, cfg);
   const upgraded = reached.rank > storedTier.rank;
-  const maintained = !upgraded && storedTier.rank > 0 && qualifyingNow >= storedTier.minQualifyingPts;
 
   return {
     commit: {
       stayId: stay.id,
       guestId: guest.id,
       transactions,
-      newTierRank: upgraded ? reached.rank : undefined,
-      tierValidUntil: upgraded || maintained ? addMonths(now, cfg.tierWindowMonths) : undefined,
+      tierWindowStart: addMonths(now, -cfg.tierWindowMonths),
+      decideTier: (qualifyingPts, currentRank) => decideTier(qualifyingPts, currentRank, now, cfg),
       clearWelcomePending,
       processedAt: now,
     },
@@ -125,6 +139,24 @@ export function planCheckout(
     // Observação: se o nível guardado está vencido e o hóspede não o mantém, quem rebaixa é a rotina noturna.
     upgraded,
   };
+}
+
+/**
+ * Nível depois do crédito: sobe se os pontos-base dos últimos 12 meses atingirem um nível acima;
+ * se mantiver o nível atual (acima do inicial), a validade é renovada. Descer é tarefa da rotina noturna.
+ */
+export function decideTier(
+  qualifyingPts: number,
+  currentRank: number,
+  now: Date,
+  cfg: LoyaltyConfig,
+): { newTierRank?: number; tierValidUntil?: Date } {
+  const reached = resolveTier(qualifyingPts, cfg);
+  const validUntil = addMonths(now, cfg.tierWindowMonths);
+  if (reached.rank > currentRank) return { newTierRank: reached.rank, tierValidUntil: validUntil };
+  const current = cfg.tiers.find((t) => t.rank === currentRank);
+  if (current && current.rank > 0 && qualifyingPts >= current.minQualifyingPts) return { tierValidUntil: validUntil };
+  return {};
 }
 
 export interface CheckoutResult {
@@ -154,11 +186,12 @@ export async function processCheckout(deps: LoyaltyDeps, stayId: string): Promis
     if (data.stay.pointsProcessedAt) {
       return { stayId, alreadyProcessed: true, earned: 0, tier: tierName, upgraded: false };
     }
+    if (!data.guest.active) throw new StayNotEligibleError('Hóspede excluído do programa.');
     if (data.stay.status === 'CANCELLED' || data.stay.status === 'NO_SHOW') {
       throw new StayNotEligibleError('Estadia cancelada ou no-show não gera pontos.');
     }
-    // Tolerância de 1 dia pelo fuso do hotel; o check-out não pode ser de uma data futura.
-    if (data.stay.checkOut.getTime() > now.getTime() + 86_400_000) {
+    // A data de saída é do calendário do hotel; compara com o "hoje" no fuso do hotel (sem folga).
+    if (data.stay.checkOut.toISOString().slice(0, 10) > localDate(now, cfg.timeZone)) {
       throw new StayNotEligibleError('O check-out ainda não aconteceu.');
     }
 
@@ -168,8 +201,10 @@ export async function processCheckout(deps: LoyaltyDeps, stayId: string): Promis
     );
     const plan = planCheckout(data, qualifyingBefore, now, cfg);
     try {
-      await deps.stays.commitCheckout(plan.commit);
-      return { stayId, alreadyProcessed: false, earned: plan.earned, tier: plan.tier, upgraded: plan.upgraded };
+      const { tierRank } = await deps.stays.commitCheckout(plan.commit);
+      const upgraded = tierRank > data.guest.tierRank;
+      const tier = upgraded ? (cfg.tiers.find((t) => t.rank === tierRank) ?? cfg.tiers[0]).name : plan.tier;
+      return { stayId, alreadyProcessed: false, earned: plan.earned, tier, upgraded };
     } catch (e) {
       // Conflito: ou esta estadia já foi processada (o próximo ciclo detecta e responde) ou os
       // dados do hóspede mudaram no meio (o próximo ciclo recalcula com os dados novos).

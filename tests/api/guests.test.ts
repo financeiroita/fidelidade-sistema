@@ -83,7 +83,7 @@ describe('POST /guests', () => {
       referralCode: first.referralCode.toLowerCase(),
     });
     expect(res.statusCode).toBe(201);
-    expect(res.json().pendingWelcomePoints).toBe(500);
+    expect(res.json()).not.toHaveProperty('pendingWelcomePoints'); // não revela se o código existe
     expect(repo.guests[1].welcomeBonusPending).toBe(500);
     expect(repo.guests[1].referredById).toBe(repo.guests[0].id);
   });
@@ -91,7 +91,8 @@ describe('POST /guests', () => {
   it('código de indicação inexistente não impede o cadastro', async () => {
     const res = await post({ ...valid, referralCode: 'NAO-EXST' });
     expect(res.statusCode).toBe(201);
-    expect(res.json().pendingWelcomePoints).toBe(0);
+    expect(res.json()).not.toHaveProperty('pendingWelcomePoints');
+    expect(repo.guests[0].welcomeBonusPending).toBe(0);
   });
 
   it('recusa data impossível, futura e telefone inválido', async () => {

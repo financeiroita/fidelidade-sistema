@@ -55,14 +55,16 @@ export async function runNightly(deps: MaintenanceDeps): Promise<MaintenanceResu
   // 1) Vencimento de pontos e 2) avisos (compartilham a leitura dos lotes)
   let lots: Awaited<ReturnType<typeof repo.loadActiveLots>> = [];
   try {
-    lots = await repo.loadActiveLots();
+    // Só os lotes que vencem até o fim da maior janela de aviso: os demais não interessam hoje.
+    const horizonDays = Math.max(0, ...cfg.expiryWarningDays);
+    lots = await repo.loadActiveLots(new Date(now.getTime() + horizonDays * 86_400_000));
   } catch (e) {
     fail('carregar-lotes', e);
   }
 
   for (const item of planExpirations(lots, now)) {
     try {
-      if (await repo.expireLot(item)) {
+      if (await repo.expireLot(item, now)) {
         result.expiredLots++;
         result.expiredPoints += item.points;
       }
@@ -73,7 +75,7 @@ export async function runNightly(deps: MaintenanceDeps): Promise<MaintenanceResu
 
   try {
     const stillActive = lots.filter((l) => l.expiresAt > now);
-    result.noticesCreated = await repo.saveNotices(planNotices(stillActive, now, cfg.expiryWarningDays));
+    result.noticesCreated = await repo.saveNotices(planNotices(stillActive, now, cfg.expiryWarningDays, cfg.timeZone));
   } catch (e) {
     fail('avisos', e);
   }

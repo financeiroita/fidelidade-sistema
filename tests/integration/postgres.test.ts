@@ -459,3 +459,45 @@ describe('rotina noturna em corrida', () => {
     expect(end.tier.name).toBe('Prata');
   });
 });
+
+describe('correções da revisão geral (ADR 0011)', () => {
+  it('clique duplo ao lançar estadia sem identificador cria uma só', async () => {
+    const g = await newGuest();
+    const body = { guestId: g.id, channel: 'PHONE', checkIn: '2026-02-27', checkOut: '2026-03-01', charges: [{ category: 'ROOM', amount: 1000 }] };
+    const rs = await Promise.all([post('/stays', body), post('/stays', body), post('/stays', body)]);
+    expect(rs.filter((r) => r.statusCode === 201)).toHaveLength(1);
+    expect(rs.filter((r) => r.statusCode === 409)).toHaveLength(2);
+    expect(await prisma.stay.count({ where: { guestId: g.id } })).toBe(1);
+  });
+
+  it('estadia que terminou antes do cadastro é recusada', async () => {
+    const g = await newGuest();
+    const r = await post('/stays', { guestId: g.id, channel: 'PHONE', checkIn: '2026-02-20', checkOut: '2026-02-25', externalRef: 'ANT-1', charges: [{ category: 'ROOM', amount: 8000 }] });
+    expect(r.statusCode).toBe(422);
+    expect(await prisma.stay.count()).toBe(0);
+  });
+
+  it('dois check-outs simultâneos que juntos atingem o nível: o hóspede sobe', async () => {
+    for (let round = 0; round < 3; round++) {
+      const g = await newGuest({ email: `t${round}@exemplo.com`, document: ['111.444.777-35', '390.533.447-05', '168.995.350-09'][round] });
+      const [s1, s2] = [await openStay(g.id, 2000), await openStay(g.id, 2000)];
+      const rs = await Promise.all([post(`/stays/${s1}/checkout`), post(`/stays/${s2}/checkout`)]);
+      expect(rs.every((r) => r.statusCode === 200)).toBe(true);
+      const end = await prisma.guest.findUniqueOrThrow({ where: { id: g.id }, include: { tier: true } });
+      expect(end.tier.name).toBe('Prata'); // 4.000 pontos-base ≥ 3.000
+      expect(rs.some((r) => r.json().upgraded)).toBe(true);
+    }
+  });
+
+  it('os lançamentos usam a data da aplicação, não a do banco', async () => {
+    const g = await newGuest();
+    await stayDone(g.id, 1000);
+    const reward = await newReward(500);
+    await post('/redemptions', { guestId: g.id, rewardId: reward.id, requestId: 'req-data-app-1' });
+    const txs = await prisma.pointsTransaction.findMany({ where: { guestId: g.id } });
+    expect(txs.length).toBe(2);
+    for (const t of txs) expect(t.createdAt.toISOString()).toBe('2026-03-01T12:00:00.000Z');
+    const guest = await prisma.guest.findUniqueOrThrow({ where: { id: g.id } });
+    expect(guest.memberSince.toISOString()).toBe('2026-03-01T12:00:00.000Z');
+  });
+});

@@ -9,9 +9,10 @@ export class PrismaMaintenanceRepository implements MaintenanceRepository {
     return (await this.prisma.session.deleteMany({ where: { expiresAt: { lte: now } } })).count;
   }
 
-  async loadActiveLots(): Promise<LotRow[]> {
+  async loadActiveLots(until: Date): Promise<LotRow[]> {
+    // Só o que vence até o fim da maior janela de aviso (usa o índice de expiresAt).
     const rows = await this.prisma.pointsTransaction.findMany({
-      where: { remaining: { gt: 0 }, expiresAt: { not: null } },
+      where: { expiresAt: { not: null, lte: until }, remaining: { gt: 0 } },
       select: { id: true, guestId: true, remaining: true, expiresAt: true, guest: { select: { deletedAt: true } } },
     });
     return rows.map((r) => ({
@@ -23,7 +24,7 @@ export class PrismaMaintenanceRepository implements MaintenanceRepository {
     }));
   }
 
-  async expireLot(item: ExpirationPlan): Promise<boolean> {
+  async expireLot(item: ExpirationPlan, now: Date): Promise<boolean> {
     try {
       return await this.prisma.$transaction(async (tx) => {
         // Mesma ordem de trava de todos os fluxos (check-out, resgate futuro): primeiro o hóspede,
@@ -43,6 +44,7 @@ export class PrismaMaintenanceRepository implements MaintenanceRepository {
             remaining: 0,
             idempotencyKey: `expire:${item.lotId}`,
             note: 'Pontos vencidos',
+            createdAt: now,
           },
         });
         return true;

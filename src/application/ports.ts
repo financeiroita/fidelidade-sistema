@@ -15,6 +15,8 @@ export interface NewGuest {
   acquisitionSrc?: string;
   marketingConsent: boolean;
   consentAt: Date;
+  /** Data de entrada no programa (relógio da aplicação). Estadias anteriores a ela não pontuam. */
+  memberSince: Date;
   referralCode: string;
   referredById?: string;
   /** Boas-vindas por indicação aguardando o 1º check-out (0 = nenhum). */
@@ -59,6 +61,12 @@ export interface NewStay {
   charges: Array<ChargeInput & { description?: string }>;
 }
 
+/**
+ * Regra checada pelo repositório com o hóspede travado: recebe a data de cadastro do hóspede e
+ * diz se a estadia pode ser lançada (estadia inteiramente anterior ao cadastro não pontua).
+ */
+export type MemberSinceRule = (memberSince: Date) => boolean;
+
 export interface CheckoutData {
   stay: {
     id: string;
@@ -76,6 +84,10 @@ export interface CheckoutData {
     tierValidUntil: Date | null;
     referredById: string | null;
     welcomeBonusPending: number;
+    /** Falso se o hóspede foi anonimizado (LGPD): não ganha mais pontos. */
+    active: boolean;
+    /** Falso se quem indicou foi anonimizado: não recebe o bônus de indicação. */
+    referrerActive: boolean;
   };
   /** O hóspede já ganhou pontos por alguma estadia/consumo antes? (estadia sem receita não conta) */
   hasPriorEarning: boolean;
@@ -85,27 +97,40 @@ export interface CheckoutCommit {
   stayId: string;
   guestId: string;
   transactions: NewPointsTx[];
-  newTierRank?: number;
-  tierValidUntil?: Date;
+  /** Início da janela do nível (12 meses): os pontos-base são somados de novo sob a trava. */
+  tierWindowStart: Date;
+  /**
+   * Decide o nível com os pontos-base lidos sob a trava (já incluindo os desta estadia), para dois
+   * check-outs simultâneos do mesmo hóspede não perderem a subida de nível.
+   */
+  decideTier: (qualifyingPts: number, currentRank: number) => { newTierRank?: number; tierValidUntil?: Date };
   clearWelcomePending: boolean;
+  /** Relógio da aplicação: também é a data gravada nos lançamentos (createdAt). */
   processedAt: Date;
 }
 
 export class GuestNotFoundError extends Error {}
-/** Estadia já lançada (mesmo identificador ou mesmo hóspede e datas). */
+/** Estadia já lançada (mesmo identificador, ou sem identificador e com período sobreposto). */
 export class DuplicateStayError extends Error {}
+/** Estadia inteiramente anterior ao cadastro do hóspede, ou antiga demais para lançamento manual. */
+export class StayOutOfPeriodError extends Error {}
 export class StayNotFoundError extends Error {}
 export class StayNotEligibleError extends Error {}
 /** Outro processamento do mesmo check-out chegou primeiro. */
 export class StayAlreadyProcessedError extends Error {}
 
 export interface StayRepository {
-  createStay(stay: NewStay): Promise<void>;
+  /**
+   * Trava o hóspede e grava a estadia. Recusa (StayOutOfPeriodError) se `allowed(memberSince)` for
+   * falso, e (DuplicateStayError) se o identificador já existe ou, sem identificador, se o período
+   * se sobrepõe a outra estadia do hóspede.
+   */
+  createStay(stay: NewStay, allowed: MemberSinceRule): Promise<void>;
   loadCheckout(stayId: string): Promise<CheckoutData | null>;
   /** Soma de pontos qualificáveis do hóspede creditados desde a data (janela do nível). */
   qualifyingPointsSince(guestId: string, since: Date): Promise<number>;
-  /** Atômico: grava créditos, marca a estadia como processada, atualiza nível e zera o pendente. */
-  commitCheckout(commit: CheckoutCommit): Promise<void>;
+  /** Atômico: grava créditos, marca a estadia como processada, atualiza nível e zera o pendente. Devolve o nível final. */
+  commitCheckout(commit: CheckoutCommit): Promise<{ tierRank: number }>;
 }
 
 // ---- Resgates ----
@@ -175,7 +200,7 @@ export interface RewardUow {
   /** Lotes com saldo e ainda dentro da validade. */
   loadUsableLots(guestId: string, now: Date): Promise<Lot[]>;
   /** Grava o resgate (PENDING), abate os lotes e lança o débito REDEEM no extrato. */
-  createRedemption(r: NewRedemption, rewardName: string): Promise<void>;
+  createRedemption(r: NewRedemption, rewardName: string, now: Date): Promise<void>;
   setStatus(id: string, status: RedemptionStatus, extra?: { stayId?: string; usedAt?: Date }): Promise<void>;
   /**
    * Cancela e devolve os pontos: lote ainda válido recebe o saldo de volta; lote já vencido não
@@ -209,10 +234,10 @@ import type { ExpirationPlan, LotRow, NoticePlan } from '../domain/points/mainte
 export interface MaintenanceRepository {
   /** Apaga sessões de login vencidas. Devolve quantas. */
   purgeExpiredSessions(now: Date): Promise<number>;
-  /** Todos os lotes de pontos com saldo. */
-  loadActiveLots(): Promise<LotRow[]>;
-  /** Zera o lote e grava o lançamento EXPIRE. Devolve false se o lote mudou/já foi tratado. */
-  expireLot(item: ExpirationPlan): Promise<boolean>;
+  /** Lotes com saldo que vencem até `until` (hoje + maior janela de aviso). */
+  loadActiveLots(until: Date): Promise<LotRow[]>;
+  /** Zera o lote e grava o lançamento EXPIRE (com data `now`). Devolve false se o lote mudou/já foi tratado. */
+  expireLot(item: ExpirationPlan, now: Date): Promise<boolean>;
   /** Hóspedes ativos acima do nível inicial cuja validade do nível acabou (ou nunca foi definida). */
   findTierReviewCandidates(now: Date): Promise<Array<{ guestId: string }>>;
   /**

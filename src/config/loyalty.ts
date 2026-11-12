@@ -16,6 +16,10 @@ export const loyaltyConfig = {
   expirationMonths: 24,
   expiryWarningDays: [90, 30],
   tierWindowMonths: 12,
+  /** Fuso do hotel: define o "hoje" (check-out já aconteceu? estadia anterior ao cadastro?). */
+  timeZone: 'America/Sao_Paulo',
+  /** Até quantos dias depois do check-out a recepção ainda pode lançar uma estadia manual. */
+  manualStayMaxDaysBack: 30,
   tiers: [
     { name: 'Bronze', rank: 0, minQualifyingPts: 0, multiplier: 1.0 },
     { name: 'Prata', rank: 1, minQualifyingPts: 3000, multiplier: 1.25 },

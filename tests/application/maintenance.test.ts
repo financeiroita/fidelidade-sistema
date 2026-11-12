@@ -142,8 +142,8 @@ describe('limites e falhas', () => {
     clock = new Date('2028-03-02T00:00:00Z');
     const lot = ctx.stays.transactions.find((t) => t.type === 'EARN_STAY')!;
     const real = maint.loadActiveLots.bind(maint);
-    maint.loadActiveLots = async () => {
-      const rows = await real();
+    maint.loadActiveLots = async (until) => {
+      const rows = await real(until);
       lot.remaining -= 200; // um resgate parcial acontece depois da leitura
       return rows;
     };
@@ -169,12 +169,12 @@ describe('limites e falhas', () => {
     const events: Array<{ step: string; id?: string; code: string }> = [];
     const real = maint.expireLot.bind(maint);
     let first = true;
-    maint.expireLot = async (item) => {
+    maint.expireLot = async (item, now) => {
       if (first) {
         first = false;
         throw Object.assign(new Error('detalhe com e-mail ana@exemplo.com'), { code: 'P1001' });
       }
-      return real(item);
+      return real(item, now);
     };
     const r = await runNightly({ repo: maint, now: () => clock, logger: (e) => events.push(e) });
     expect(r).toMatchObject({ errors: 1, expiredLots: 1 });
@@ -220,7 +220,7 @@ describe('revisão de nível', () => {
   it('quem manteve o nível num novo check-out tem a validade renovada e não é rebaixado na data antiga', async () => {
     const g = await guest();
     await stayDone(g.id, 3500); // Prata até 2027-03-01
-    clock = new Date('2026-12-01T00:00:00Z');
+    clock = new Date('2026-12-01T12:00:00Z');
     await stayDone(g.id, 3000); // base na janela = 6.500: mantém e renova até 2027-12-01
     expect(ctx.stays.tiers.get(g.id)!.validUntil!.toISOString().startsWith('2027-12-01')).toBe(true);
     clock = new Date('2027-03-02T00:00:00Z');

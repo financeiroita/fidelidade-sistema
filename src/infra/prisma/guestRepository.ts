@@ -32,6 +32,7 @@ export class PrismaGuestRepository implements GuestRepository {
           acquisitionSrc: g.acquisitionSrc,
           marketingConsent: g.marketingConsent,
           consentAt: g.consentAt,
+          memberSince: g.memberSince,
           referralCode: g.referralCode,
           tier: { connect: { rank: 0 } },
           referredBy: g.referredById ? { connect: { id: g.referredById } } : undefined,

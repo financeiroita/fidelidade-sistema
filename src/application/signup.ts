@@ -16,7 +16,6 @@ export interface SignupResult {
   referralCode: string;
   tier: string;
   /** Pontos de boas-vindas que serão creditados após o 1º check-out (ADR 0006). */
-  pendingWelcomePoints: number;
 }
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -66,6 +65,7 @@ export async function signupGuest(deps: SignupDeps, input: SignupInput): Promise
       acquisitionSrc: input.acquisitionSrc,
       marketingConsent: input.marketingConsent,
       consentAt: now,
+      memberSince: now,
       referralCode,
       referredById: referrer?.id,
       welcomeBonusPending: pendingWelcomePoints,
@@ -76,7 +76,8 @@ export async function signupGuest(deps: SignupDeps, input: SignupInput): Promise
     const referralCode = await generateReferralCode(repo, input.fullName);
     try {
       await repo.create(guestData(referralCode));
-      return { id, referralCode, tier: cfg.tiers[0].name, pendingWelcomePoints };
+      // Não devolve se o código de indicação valeu: isso revelaria quais códigos existem.
+      return { id, referralCode, tier: cfg.tiers[0].name };
     } catch (e) {
       if (!(e instanceof ReferralCodeCollisionError) || attempt >= 4) throw e;
     }

@@ -20,6 +20,7 @@ import {
   DuplicateGuestError,
   DuplicateOperatorError,
   DuplicateStayError,
+  StayOutOfPeriodError,
   GuestNotFoundError,
   InsufficientPointsError,
   InvalidCredentialsError,
@@ -79,7 +80,8 @@ export interface AppDeps {
 export interface AppOptions {
   logger?: boolean;
   /** Confiar no cabeçalho do proxy para descobrir o IP real (use só atrás de um proxy seu). */
-  trustProxy?: boolean;
+  /** Número de proxies seus na frente (ou false). Nunca true: o cliente poderia forjar o IP. */
+  trustProxy?: number | false;
   /** Pedidos por minuto, por IP, nas rotas abertas e sensíveis. */
   limits?: { login?: number; password?: number; guests?: number };
 }
@@ -96,7 +98,8 @@ export function buildApp(deps: AppDeps, opts: AppOptions = {}): FastifyInstance 
   const app = Fastify({
     logger: opts.logger ? { redact: ['req.headers.authorization'] } : false,
     bodyLimit: 64 * 1024,
-    trustProxy: opts.trustProxy ?? false,
+    // Confia só nos N saltos mais próximos (equivale a trustProxy: N; o tipo do Fastify não aceita número).
+    trustProxy: opts.trustProxy ? (_addr: string, hop: number) => hop < (opts.trustProxy as number) : false,
     // Conexões lentas de propósito não ficam penduradas.
     connectionTimeout: 30_000,
     requestTimeout: 30_000,
@@ -145,6 +148,9 @@ export function buildApp(deps: AppDeps, opts: AppOptions = {}): FastifyInstance 
       if (e instanceof InvalidStayError) return reply.code(422).send({ error: 'invalid_stay' });
       if (e instanceof RequestIdReusedError) return reply.code(409).send({ error: 'request_id_reused' });
       if (e instanceof DuplicateStayError) return reply.code(409).send({ error: 'duplicate_stay' });
+      if (e instanceof StayOutOfPeriodError) {
+        return reply.code(422).send({ error: 'stay_out_of_period', message: e.message });
+      }
       if (e instanceof DuplicateOperatorError) return reply.code(409).send({ error: 'duplicate_operator' });
       if (e instanceof CannotDeactivateSelfError) return reply.code(409).send({ error: 'cannot_deactivate_self' });
       if (e instanceof LastAdminError) return reply.code(409).send({ error: 'last_admin' });

@@ -62,6 +62,34 @@ describe('POST /stays', () => {
   });
 });
 
+describe('estadia retroativa: limite de dias', () => {
+  it('check-out há mais de 30 dias é recusado mesmo para membro antigo', async () => {
+    let clock = new Date('2026-01-10T12:00:00Z');
+    ctx = makeApp(undefined, () => clock);
+    headers = ctx.headers;
+    const g = await signup(ana); // membro desde jan/2026
+    clock = new Date('2026-07-13T12:00:00Z');
+    const old = await stay(g.id, [{ category: 'ROOM', amount: 1000 }], 'PHONE', { checkIn: '2026-06-01', checkOut: '2026-06-05', externalRef: 'X-1' });
+    expect(old.statusCode).toBe(422);
+    const ok = await stay(g.id, [{ category: 'ROOM', amount: 1000 }], 'PHONE', { checkIn: '2026-06-10', checkOut: '2026-06-13', externalRef: 'X-2' });
+    expect(ok.statusCode).toBe(201); // exatamente 30 dias
+  });
+});
+
+describe('check-out e o fuso do hotel', () => {
+  it('às 21h de 12/07 em São Paulo (00h UTC de 13/07) a saída de 13/07 ainda não aconteceu', async () => {
+    let clock = new Date('2026-07-12T12:00:00Z');
+    ctx = makeApp(undefined, () => clock);
+    headers = ctx.headers;
+    const g = await signup(ana);
+    const s = (await stay(g.id, [{ category: 'ROOM', amount: 1000 }], 'PHONE', { checkIn: '2026-07-12', checkOut: '2026-07-13', externalRef: 'TZ-1' })).json();
+    clock = new Date('2026-07-13T00:30:00Z'); // 21h30 de 12/07 em São Paulo
+    expect((await checkout(s.id)).statusCode).toBe(409);
+    clock = new Date('2026-07-13T03:00:00Z'); // 00h de 13/07 em São Paulo
+    expect((await checkout(s.id)).statusCode).toBe(200);
+  });
+});
+
 describe('lançamento sem duplicar e com limites', () => {
   const room = [{ category: 'ROOM', amount: 1000 }];
 
@@ -70,8 +98,20 @@ describe('lançamento sem duplicar e com limites', () => {
     expect((await stay(g.id, room, 'PHONE', { externalRef: 'REC-001' })).statusCode).toBe(201);
     expect((await stay(g.id, room, 'PHONE', { externalRef: 'REC-001' })).statusCode).toBe(409);
     expect((await stay(g.id, room, 'PHONE', { externalRef: 'REC-002' })).statusCode).toBe(201);
-    expect((await stay(g.id, room)).statusCode).toBe(201);
+    // Sem identificador, período sobreposto ao de outra estadia do hóspede = repetido.
     expect((await stay(g.id, room)).statusCode).toBe(409);
+    expect((await stay(g.id, room, 'PHONE', { checkIn: '2026-07-12', checkOut: '2026-07-14' })).statusCode).toBe(409);
+    // Encosta sem sobrepor (sai num dia, entra no mesmo dia): é outra estadia.
+    expect((await stay(g.id, room, 'PHONE', { checkIn: '2026-07-13', checkOut: '2026-07-15' })).statusCode).toBe(201);
+  });
+
+  it('estadia anterior ao cadastro ou antiga demais é recusada (ADR 0004 e 0011)', async () => {
+    const g = await signup(ana); // cadastro em 13/07/2026
+    const before = await stay(g.id, room, 'PHONE', { checkIn: '2026-07-01', checkOut: '2026-07-05', externalRef: 'OLD-1' });
+    expect(before.statusCode).toBe(422);
+    expect(before.json().error).toBe('stay_out_of_period');
+    // Quem se cadastra durante a estadia (ex.: no check-out) pontua por ela.
+    expect((await stay(g.id, room, 'PHONE', { checkIn: '2026-07-10', checkOut: '2026-07-13', externalRef: 'DUR-1' })).statusCode).toBe(201);
   });
 
   it('limita valores, centavos e datas absurdas', async () => {
@@ -203,7 +243,7 @@ describe('indicação (ADR 0006)', () => {
   it('boas-vindas e bônus do indicador saem só no 1º check-out com receita', async () => {
     const a = await signup(ana);
     const b = await signup({ ...bia, referralCode: a.referralCode });
-    expect(b.pendingWelcomePoints).toBe(500);
+    expect(ctx.guests.guests.find((g) => g.id === b.id)!.welcomeBonusPending).toBe(500);
     expect(ctx.stays.balance(b.id)).toBe(0);
     expect(ctx.stays.balance(a.id)).toBe(0);
 

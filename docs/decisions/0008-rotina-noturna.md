@@ -15,10 +15,10 @@ Uma vez por dia, de madrugada. No Linux, cron; no Windows, Agendador de Tarefas 
 
 ## Limitações
 - Carrega todos os lotes com saldo em memória a cada rodada. Aceitável para um hotel; trocar por leitura em lotes se crescer muito.
-- O resgate de pontos (que consome lotes) ainda não existe; quando existir, deve gravar o consumo no campo `remaining`.
+- ~~O resgate de pontos (que consome lotes) ainda não existe; quando existir, deve gravar o consumo no campo `remaining`.~~ Resolvido no ADR 0009.
 - Envio dos avisos e cumprimento de consentimento (LGPD): decidir se o aviso de vencimento é mensagem de serviço (vale para todos) ou só para quem aceitou marketing.
 - Bônus de aniversário (500 pontos) ainda não implementado.
-- Não testado contra PostgreSQL real.
+- Testado em PostgreSQL 18 embutido (`npm run test:integration`); falta validar no 16 do docker-compose.
 
 ## Auditoria de 2026-11-11
 Corrigido:

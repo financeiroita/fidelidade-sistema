@@ -1,3 +1,6 @@
+> ## AVISO INTERNO — NÃO PUBLICAR
+> **RASCUNHO — ainda não implementado no sistema: bônus de aniversário, campanhas, envio de avisos de vencimento, estorno de pontos após o check-out. Não publicar sem decidir (ver `docs/perguntas-em-aberto.md`).**
+
 # [Nome do Programa] — Seu hotel, sempre com vantagens
 
 > RASCUNHO COMERCIAL. Baseado nas regras sugeridas (ADR 0003/0004). Valores, nomes e benefícios por nível ainda precisam ser aprovados pelo hotel e revisados juridicamente antes de publicar. Itens entre [colchetes] são pendentes.
@@ -14,12 +17,12 @@ Cadastre-se grátis e comece a acumular pontos já na sua próxima estadia. Sem 
 | Restaurante e bar | 1 ponto a cada R$ 1 |
 | Spa | 1 ponto a cada R$ 1 |
 | Eventos | 1 ponto a cada R$ 2 |
-| Reservou direto com o hotel (site, telefone ou WhatsApp) | +20% de pontos extras na hospedagem |
+| Reservou direto com o hotel (site, telefone, WhatsApp ou balcão) | Bônus de 20% sobre os pontos-base das diárias |
 | Mês do seu aniversário | 500 pontos de presente |
 | Indicou um amigo | 1.000 pontos para você e 500 para ele, ambos após a primeira estadia do amigo |
 | Campanhas especiais | Pontos em dobro ou bônus em datas selecionadas |
 
-**Exemplo:** uma estadia de 3 noites (R$ 2.100) com R$ 400 em restaurante rende 2.500 pontos. Se você reservou direto, ganha mais 420 pontos de bônus.
+**Exemplo (nível Bronze):** uma estadia de 3 noites (R$ 2.100) com R$ 400 em restaurante rende 2.500 pontos. Se você reservou direto, ganha mais 420 pontos de bônus (20% dos 2.100 pontos-base das diárias).
 
 ## Quatro níveis, cada um com mais vantagens
 
@@ -30,7 +33,7 @@ Cadastre-se grátis e comece a acumular pontos já na sua próxima estadia. Sem 
 | Ouro | [8.000] pontos em 12 meses | 50% a mais (1,5x) |
 | Diamante | [20.000] pontos em 12 meses | o dobro (2x) |
 
-Além de ganhar pontos mais rápido, cada nível traz benefícios exclusivos, como [late check-out, upgrade sujeito à disponibilidade, welcome drink, café da manhã especial]. Para subir de nível contam os pontos-base, ou seja, o valor gasto sem multiplicadores. Os pontos de bônus (reserva direta, aniversário, indicação, campanhas) entram no saldo, mas não contam para o nível.
+Além de ganhar pontos mais rápido, cada nível traz benefícios exclusivos, como [late check-out, upgrade sujeito à disponibilidade, welcome drink, café da manhã especial]. Para subir de nível contam os pontos-base, ou seja, o valor gasto sem multiplicadores. Os pontos de bônus (reserva direta, aniversário, indicação, campanhas) entram no saldo, mas não contam para o nível. A estadia em que você sobe de nível pontua no nível anterior; o novo nível vale a partir da próxima.
 
 ## Como usar seus pontos
 

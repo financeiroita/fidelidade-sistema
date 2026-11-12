@@ -1,10 +1,10 @@
 # 0007 — Crédito de pontos no check-out e lançamento manual de estadias
 
-- **Status**: Aceita
+- **Status**: Aceita (autenticação por chave substituída pelo ADR 0010)
 - **Data**: 2026-11-11
 
 ## Decisão
-- Rotas internas, protegidas por chave no cabeçalho `x-api-key` (`INTERNAL_API_KEY`):
+- Rotas internas, protegidas por chave no cabeçalho `x-api-key` (`INTERNAL_API_KEY`) (nota: substituído pelo login por funcionário do ADR 0010; a chave não existe mais):
   - `POST /stays` lança uma estadia manualmente (recepção), com o folio por categoria. Não gera pontos.
   - `POST /stays/:id/checkout` credita os pontos. Repetir a chamada não credita de novo (idempotente).
 - Cálculo (`planCheckout`, função pura): pontos pelo nível vigente no check-out; bônus de reserva direta só para os canais site, telefone, WhatsApp e balcão (OTA, agência e corporativo não); estornos não geram pontos negativos; lotes com validade de 24 meses.
@@ -14,10 +14,10 @@
 - Cancelada ou no-show: check-out recusado (409).
 
 ## Limitações conhecidas
-- A rotina de check-out com o PostgreSQL real ainda não foi testada (os testes usam o repositório em memória).
+- ~~A rotina de check-out com o PostgreSQL real ainda não foi testada.~~ Testado em PostgreSQL 18 embutido (`npm run test:integration`); falta validar no 16 do docker-compose.
 - (Atualizado) A rotina noturna e o nível vencido foram implementados no ADR 0008.
-- A chave interna é única e compartilhada; sem usuários individuais nem registro de quem lançou. Avaliar autenticação por usuário antes de dar acesso à recepção.
-- Rotina noturna: expiração de pontos, rebaixamento de nível e aviso de vencimento ainda não existem.
+- ~~A chave interna é única e compartilhada; sem usuários individuais nem registro de quem lançou.~~ Resolvido no ADR 0010 (login por funcionário e auditoria).
+- ~~Rotina noturna: expiração de pontos, rebaixamento de nível e aviso de vencimento ainda não existem.~~ Resolvido no ADR 0008 (o envio dos avisos continua pendente).
 - Importação automática do Erbon continua pendente (levantar a API).
 
 ## Auditoria de 2026-11-11
@@ -34,6 +34,6 @@ Decisões do hotel em aberto:
 2. **Estorno depois do check-out:** hoje só se compensa estorno lançado antes do check-out e na mesma categoria. Falta rota de estorno que reduza os pontos já creditados (tipo REVERSAL).
 3. ~~Nível vencido~~: resolvido no ADR 0008 (rotina noturna) e no check-out, que ignora o multiplicador de nível vencido.
 
-Segurança ainda pendente: usuário individual por funcionário e registro de quem lançou (`createdBy`); limite de requisições nas rotas internas; restringir essas rotas por rede/IP.
+Segurança ainda pendente: ~~usuário individual por funcionário e registro de quem lançou (`createdBy`)~~ (resolvido no ADR 0010); limite de requisições nas rotas internas; restringir essas rotas por rede/IP.
 
 > Atualização (ADR 0010): a chave interna única foi substituída por login por funcionário, com papéis e auditoria.

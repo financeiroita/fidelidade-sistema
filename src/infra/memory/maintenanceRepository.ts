@@ -26,9 +26,9 @@ export class InMemoryMaintenanceRepository implements MaintenanceRepository {
     return n;
   }
 
-  async loadActiveLots(): Promise<LotRow[]> {
+  async loadActiveLots(until: Date): Promise<LotRow[]> {
     return this.stays.transactions
-      .filter((t) => t.remaining > 0 && t.expiresAt)
+      .filter((t) => t.remaining > 0 && t.expiresAt && t.expiresAt <= until)
       .map((t) => ({
         id: t.id,
         guestId: t.guestId,
@@ -38,7 +38,7 @@ export class InMemoryMaintenanceRepository implements MaintenanceRepository {
       }));
   }
 
-  async expireLot(item: ExpirationPlan): Promise<boolean> {
+  async expireLot(item: ExpirationPlan, now: Date): Promise<boolean> {
     const lot = this.stays.transactions.find((t) => t.id === item.lotId);
     if (!lot || lot.remaining !== item.points) return false;
     const key = `expire:${item.lotId}`;
@@ -53,7 +53,7 @@ export class InMemoryMaintenanceRepository implements MaintenanceRepository {
       qualifyingPts: 0,
       remaining: 0,
       idempotencyKey: key,
-      createdAt: this.clock(),
+      createdAt: now,
     });
     return true;
   }

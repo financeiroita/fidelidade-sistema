@@ -13,7 +13,7 @@ Projeto novo, será editado por várias IAs e em vários computadores.
 - Commits automáticos a cada alteração importante, mensagens em pt-BR (`tipo: resumo`).
 - Agente verificador e auditor propostos sempre que apropriado (`docs/agents/`).
 - Pastas: `src/`, `tests/`, `scripts/`, `docs/`.
-- Stack ainda não escolhida (decidir em ADR futuro).
+- Stack ainda não escolhida (decidir em ADR futuro). Nota: a stack foi decidida no ADR 0002 (TypeScript + PostgreSQL).
 
 ## Consequências
 Qualquer pessoa/IA consegue retomar o trabalho lendo README, AGENTS e ADRs.

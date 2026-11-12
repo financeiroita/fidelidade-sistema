@@ -16,6 +16,20 @@ if (!strongSecret(secret, 32)) {
   process.exit(1);
 }
 
+function proxyHops(): number | false {
+  if (process.env.TRUST_PROXY !== undefined) {
+    console.error('TRUST_PROXY foi substituído por TRUST_PROXY_HOPS (número de proxies na frente). Ver README.');
+    process.exit(1);
+  }
+  const v = process.env.TRUST_PROXY_HOPS;
+  if (v === undefined || v === '' || v === '0') return false;
+  if (!/^[1-9]$/.test(v)) {
+    console.error('TRUST_PROXY_HOPS deve ser um número de 1 a 9.');
+    process.exit(1);
+  }
+  return Number(v);
+}
+
 const prisma = new PrismaClient();
 const app = buildApp(
   {
@@ -29,8 +43,9 @@ const app = buildApp(
       onAuditError: (code) => console.error(JSON.stringify({ at: new Date().toISOString(), event: 'falha-auditoria', code })),
     },
   },
-  // TRUST_PROXY=true só quando o servidor está atrás de um proxy/balanceador seu (para o IP real no limite).
-  { logger: true, trustProxy: process.env.TRUST_PROXY === 'true' },
+  // TRUST_PROXY_HOPS = quantos proxies/balanceadores SEUS ficam na frente do servidor (ex.: 1).
+  // Nunca "confiar em todos": o cliente poderia inventar o próprio IP no X-Forwarded-For e furar o limite.
+  { logger: true, trustProxy: proxyHops() },
 );
 
 const port = Number(process.env.PORT ?? 3000);

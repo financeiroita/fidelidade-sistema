@@ -82,7 +82,7 @@ export async function redeem(
       status: 'PENDING',
       stayId: null,
     };
-    await uow.createRedemption(redemption, reward.name);
+    await uow.createRedemption(redemption, reward.name, now);
     return { redemption, replay: false };
   });
 }

@@ -97,7 +97,7 @@ export class InMemoryRewardRepository implements RewardRepository {
         txs
           .filter((t) => t.guestId === guestId && t.remaining > 0 && t.expiresAt && t.expiresAt > now)
           .map((t) => ({ id: t.id, remaining: t.remaining, expiresAt: t.expiresAt as Date })),
-      createRedemption: async (r, rewardName) => {
+      createRedemption: async (r, rewardName, now) => {
         // Valida tudo antes de gravar: a memória não desfaz escritas parciais como o banco.
         for (const l of r.lots) {
           const lot = txs.find((t) => t.id === l.lotId);

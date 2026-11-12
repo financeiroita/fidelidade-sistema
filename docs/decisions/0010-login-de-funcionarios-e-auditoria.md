@@ -23,11 +23,11 @@
 - A auditoria é gravada depois da operação, não na mesma transação: uma queda entre as duas pode deixar uma operação sem registro. Mover para a mesma transação se isso for exigência de conformidade.
 - O sistema do hóspede (site/app) ainda não existe e precisará de login próprio. A integração com o Erbon precisará de um acesso de serviço (decidir no ADR do Erbon).
 - Os registros de auditoria não têm prazo de retenção definido (LGPD): definir por quanto tempo guardar.
-- Não testado contra PostgreSQL real.
+- Testado em PostgreSQL 18 embutido (`npm run test:integration`); falta validar no 16 do docker-compose.
 
 ## Auditoria de 2026-11-11
 Corrigido:
-- **Rajada de logins** (alto): no máximo 4 senhas são processadas ao mesmo tempo, com fila de 64; o que passa disso recebe 503. Depois da senha, a conta é relida (travada ou desativada no meio da rajada é recusada). **Limite por IP** (`@fastify/rate-limit`): login e troca de senha 10 por minuto, cadastro público 20 por minuto (429). Corpo de 1 KB nas rotas de senha, timeout de conexão e de requisição de 30 s. Use `TRUST_PROXY=true` só atrás de um proxy seu, para o IP ser o real.
+- **Rajada de logins** (alto): no máximo 4 senhas são processadas ao mesmo tempo, com fila de 64; o que passa disso recebe 503. Depois da senha, a conta é relida (travada ou desativada no meio da rajada é recusada). **Limite por IP** (`@fastify/rate-limit`): login e troca de senha 10 por minuto, cadastro público 20 por minuto (429). Corpo de 1 KB nas rotas de senha, timeout de conexão e de requisição de 30 s. ~~Use `TRUST_PROXY=true`~~ (substituído no ADR 0011 por `TRUST_PROXY_HOPS`, o número de proxies seus na frente).
 - **Auditoria inchada:** login de usuário desconhecido não é mais gravado (qualquer pessoa na internet encheria o histórico).
 - **Trocar a própria senha** agora conta as senhas atuais erradas e trava (quem roubou uma sessão não adivinha por aqui).
 - **Administradores:** ninguém redefine a própria senha pela rota de administrador (só pela rota própria, com a senha atual); o último administrador ativo não pode ser desativado, nem por dois pedidos simultâneos (trava as linhas dos administradores); `npm run operator:unlock -- --username x` reativa e destrava uma conta pela linha de comando.
@@ -42,4 +42,4 @@ Decisões em aberto:
 3. **Segundo fator (2FA)** para gerente e administrador.
 4. **Retenção** dos registros de auditoria (LGPD).
 5. **Auditoria na mesma transação** da operação, se a conformidade exigir.
-6. Testes com PostgreSQL real (trava dos administradores, incremento de falhas, limites).
+6. ~~Testes com PostgreSQL real (trava dos administradores, incremento de falhas, limites).~~ Feito: testado em PostgreSQL 18 embutido (`npm run test:integration`); falta validar no 16 do docker-compose.

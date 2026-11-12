@@ -117,6 +117,8 @@ model Guest {
   deletedAt        DateTime? // anonimização LGPD
 
   @@index([birthDate])
+  @@index([tierValidUntil]) // rotina noturna: níveis com validade vencida
+  @@index([referredById])
   @@index([tierId])
 }
 
@@ -198,6 +200,7 @@ model PointsTransaction {
 
   @@index([guestId, createdAt])
   @@index([guestId, expiresAt])
+  @@index([expiresAt]) // rotina noturna: lotes que vencem até a data
   @@index([redemptionId])
 }
 
@@ -308,7 +311,7 @@ model AuditLog {
   ok           Boolean  @default(true)
   details      Json?
 
-  @@index([entity, entityId])
+  @@index([entity, entityId, at])
   @@index([operatorId, at])
   @@index([at])
 }

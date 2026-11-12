@@ -195,7 +195,7 @@ describe('ciclo do resgate', () => {
   it('confirmar e usar, repetindo sem efeito; usar sem confirmar é recusado', async () => {
     const { g, r } = await pending();
     const stay = (
-      await post('/stays', { guestId: g.id, channel: 'PHONE', checkIn: '2026-02-20', checkOut: '2026-02-22', externalRef: 'U-1', charges: [] })
+      await post('/stays', { guestId: g.id, channel: 'PHONE', checkIn: '2026-02-27', checkOut: '2026-03-01', externalRef: 'U-1', charges: [] })
     ).json();
     expect((await post(`/redemptions/${r.id}/use`)).statusCode).toBe(409);
     expect((await post(`/redemptions/${r.id}/confirm`)).json().status).toBe('CONFIRMED');
@@ -209,7 +209,7 @@ describe('ciclo do resgate', () => {
     const { r } = await pending();
     const other = await newGuest({ fullName: 'Bia Lima', email: 'bia@x.com', document: '111.444.777-35' });
     const foreign = (
-      await post('/stays', { guestId: other.id, channel: 'PHONE', checkIn: '2026-02-20', checkOut: '2026-02-22', externalRef: 'U-2', charges: [] })
+      await post('/stays', { guestId: other.id, channel: 'PHONE', checkIn: '2026-02-27', checkOut: '2026-03-01', externalRef: 'U-2', charges: [] })
     ).json();
     await post(`/redemptions/${r.id}/confirm`);
     expect((await post(`/redemptions/${r.id}/use`, { stayId: foreign.id })).json()).toEqual({ error: 'invalid_stay' });

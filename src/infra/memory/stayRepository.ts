@@ -3,13 +3,16 @@ import {
   DuplicateStayError,
   GuestNotFoundError,
   StayAlreadyProcessedError,
+  StayOutOfPeriodError,
   type CheckoutCommit,
   type CheckoutData,
+  type MemberSinceRule,
   type NewPointsTx,
   type NewStay,
   type StayRepository,
   type StayStatus,
 } from '../../application/ports';
+import { overlapEnd } from '../prisma/stayRepository';
 import type { InMemoryGuestRepository } from './guestRepository';
 
 interface StoredStay extends NewStay {
@@ -35,17 +38,21 @@ export class InMemoryStayRepository implements StayRepository {
 
   constructor(private readonly guests: InMemoryGuestRepository) {}
 
-  async createStay(stay: NewStay) {
-    if (!this.guests.guests.some((g) => g.id === stay.guestId)) throw new GuestNotFoundError();
+  async createStay(stay: NewStay, allowed: MemberSinceRule) {
+    const guest = this.guests.guests.find((g) => g.id === stay.guestId);
+    if (!guest) throw new GuestNotFoundError();
+    if (!allowed(guest.memberSince)) throw new StayOutOfPeriodError('A estadia terminou antes do cadastro do hóspede.');
     const others = [...this.stays.values()];
+    const end = overlapEnd(stay.checkIn, stay.checkOut);
     const dup = stay.externalRef
       ? others.some((o) => o.externalRef === stay.externalRef)
       : others.some(
           (o) =>
-            !o.externalRef &&
             o.guestId === stay.guestId &&
-            o.checkIn.getTime() === stay.checkIn.getTime() &&
-            o.checkOut.getTime() === stay.checkOut.getTime(),
+            o.status !== 'CANCELLED' &&
+            o.status !== 'NO_SHOW' &&
+            o.checkIn < end &&
+            overlapEnd(o.checkIn, o.checkOut) > stay.checkIn,
         );
     if (dup) throw new DuplicateStayError();
     this.stays.set(stay.id, { ...stay, status: 'CHECKED_IN', pointsProcessedAt: null });
@@ -71,6 +78,8 @@ export class InMemoryStayRepository implements StayRepository {
         tierValidUntil: this.tiers.get(g.id)?.validUntil ?? null,
         referredById: g.referredById ?? null,
         welcomeBonusPending: g.welcomeBonusPending,
+        active: true,
+        referrerActive: true,
       },
       hasPriorEarning: this.transactions.some(
         (t) => t.guestId === s.guestId && (t.type === 'EARN_STAY' || t.type === 'EARN_CHARGE'),
@@ -84,7 +93,7 @@ export class InMemoryStayRepository implements StayRepository {
       .reduce((s, t) => s + t.qualifyingPts, 0);
   }
 
-  async commitCheckout(c: CheckoutCommit) {
+  async commitCheckout(c: CheckoutCommit): Promise<{ tierRank: number }> {
     const s = this.stays.get(c.stayId);
     if (!s || s.pointsProcessedAt) throw new StayAlreadyProcessedError();
     const keys = new Set(this.transactions.map((t) => t.idempotencyKey));
@@ -94,16 +103,17 @@ export class InMemoryStayRepository implements StayRepository {
     }
     s.status = 'CHECKED_OUT';
     s.pointsProcessedAt = c.processedAt;
-    const current = this.tiers.get(c.guestId)?.rank ?? 0;
-    if (c.newTierRank !== undefined && c.newTierRank > current) {
-      this.tiers.set(c.guestId, { rank: c.newTierRank, validUntil: c.tierValidUntil });
-    } else if (c.newTierRank === undefined && c.tierValidUntil) {
-      this.tiers.set(c.guestId, { rank: current, validUntil: c.tierValidUntil });
+    const current = this.tiers.get(c.guestId) ?? { rank: 0 };
+    const d = c.decideTier(await this.qualifyingPointsSince(c.guestId, c.tierWindowStart), current.rank);
+    const rank = d.newTierRank !== undefined && d.newTierRank > current.rank ? d.newTierRank : current.rank;
+    if (rank !== current.rank || d.tierValidUntil) {
+      this.tiers.set(c.guestId, { rank, validUntil: d.tierValidUntil ?? current.validUntil });
     }
     if (c.clearWelcomePending) {
       const g = this.guests.guests.find((x) => x.id === c.guestId);
       if (g) g.welcomeBonusPending = 0;
     }
+    return { tierRank: rank };
   }
 
   balance(guestId: string) {

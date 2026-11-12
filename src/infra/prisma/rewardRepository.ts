@@ -84,10 +84,11 @@ function makeUow(tx: Tx): RewardUow {
       });
       return rows.map((r) => ({ id: r.id, remaining: r.remaining, expiresAt: r.expiresAt as Date }));
     },
-    async createRedemption(r, rewardName) {
+    async createRedemption(r, rewardName, now) {
       await tx.redemption.create({
         data: {
           id: r.id,
+          requestedAt: now,
           guestId: r.guestId,
           rewardId: r.rewardId,
           points: r.points,
@@ -114,6 +115,7 @@ function makeUow(tx: Tx): RewardUow {
           redemptionId: r.id,
           idempotencyKey: `redeem:${r.id}`,
           note: `Resgate: ${rewardName}`,
+          createdAt: now,
         },
       });
     },
@@ -151,6 +153,7 @@ function makeUow(tx: Tx): RewardUow {
           redemptionId: r.id,
           idempotencyKey: `redeem-cancel:${r.id}`,
           note: 'Resgate cancelado: pontos devolvidos',
+          createdAt: now,
         },
       });
       // A parte devolvida a lote já vencido é lançada como vencida na hora (sem prazo extra).
@@ -164,6 +167,7 @@ function makeUow(tx: Tx): RewardUow {
             redemptionId: r.id,
             idempotencyKey: `redeem-cancel-expire:${r.id}:${l.lotId}`,
             note: 'Pontos vencidos (resgate cancelado após o vencimento)',
+            createdAt: now,
           },
         });
       }
