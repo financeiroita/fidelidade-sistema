@@ -4,6 +4,7 @@ import { planNotices, planTierReview, type LotRow } from '../../src/domain/point
 import { loyaltyConfig as cfg } from '../../src/config/loyalty';
 import { InMemoryMaintenanceRepository } from '../../src/infra/memory/maintenanceRepository';
 import { makeApp } from '../helpers';
+import { lastValidDay } from '../../src/domain/time';
 
 let headers: Record<string, string>; // gerente de teste (ver tests/helpers.ts)
 const ana = {
@@ -186,7 +187,7 @@ describe('limites e falhas', () => {
   it('falha ao carregar os lotes não impede a revisão de nível', async () => {
     const g = await guest();
     await stayDone(g.id, 3500);
-    clock = new Date('2027-03-02T00:00:00Z');
+    clock = new Date('2027-03-02T03:00:00Z');
     maint.loadActiveLots = async () => {
       throw new Error('banco fora');
     };
@@ -211,7 +212,7 @@ describe('revisão de nível', () => {
     const g = await guest();
     const r = await stayDone(g.id, 3500);
     expect(r.tier).toBe('Prata');
-    clock = new Date('2027-03-02T00:00:00Z'); // 12 meses depois: validade vencida
+    clock = new Date('2027-03-02T03:00:00Z'); // 12 meses depois: validade vencida
     const res = await run();
     expect(res).toMatchObject({ tierReviews: 1, tierDowngrades: 1 });
     expect(ctx.stays.tiers.get(g.id)).toMatchObject({ rank: 0 });
@@ -222,11 +223,11 @@ describe('revisão de nível', () => {
     await stayDone(g.id, 3500); // Prata até 2027-03-01
     clock = new Date('2026-12-01T12:00:00Z');
     await stayDone(g.id, 3000); // base na janela = 6.500: mantém e renova até 2027-12-01
-    expect(ctx.stays.tiers.get(g.id)!.validUntil!.toISOString().startsWith('2027-12-01')).toBe(true);
-    clock = new Date('2027-03-02T00:00:00Z');
+    expect(lastValidDay(ctx.stays.tiers.get(g.id)!.validUntil!, 'America/Sao_Paulo')).toBe('2027-12-01');
+    clock = new Date('2027-03-02T03:00:00Z');
     expect((await run()).tierReviews).toBe(0);
     expect(ctx.stays.tiers.get(g.id)!.rank).toBe(1);
-    clock = new Date('2027-12-02T00:00:00Z'); // sem atividade nos últimos 12 meses
+    clock = new Date('2027-12-02T03:00:00Z'); // sem atividade nos últimos 12 meses
     expect(await run()).toMatchObject({ tierReviews: 1, tierDowngrades: 1 });
   });
 
@@ -239,10 +240,10 @@ describe('revisão de nível', () => {
   });
 
   it('planTierReview: Bronze fica sem validade; níveis pagos ganham 12 meses', () => {
-    const now = new Date('2026-01-01T00:00:00Z');
+    const now = new Date('2026-01-01T12:00:00Z');
     expect(planTierReview(100, now, cfg)).toEqual({ newRank: 0, validUntil: null });
     const p = planTierReview(8000, now, cfg);
     expect(p.newRank).toBe(2);
-    expect(p.validUntil!.toISOString().startsWith('2027-01-01')).toBe(true);
+    expect(lastValidDay(p.validUntil!, 'America/Sao_Paulo')).toBe('2027-01-01');
   });
 });

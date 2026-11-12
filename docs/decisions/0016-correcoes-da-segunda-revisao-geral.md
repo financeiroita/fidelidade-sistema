@@ -1,6 +1,6 @@
 # 0016. Correções da segunda revisão geral
 
-- Status: Aceita
+- Status: Aceita (itens 1, 3 e 5 completados pelo ADR 0017)
 - Data: 2026-11-12
 - Substitui: item 5 do ADR 0014 (prêmios com nível vencido); parte do item 7 do ADR 0014 (modo de teste); completa o ADR 0003 (vencimento) e o ADR 0012 (proxy e número da reserva)
 

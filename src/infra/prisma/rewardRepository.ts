@@ -247,7 +247,8 @@ export class PrismaRewardRepository implements RewardRepository {
   async getStatement(guestId: string, limit: number): Promise<StatementRow[]> {
     const rows = await this.prisma.pointsTransaction.findMany({
       where: { guestId },
-      // Desempate pelo id: linhas do mesmo check-out têm a mesma data, e a ordem não pode variar.
+      // Desempate pelo id: linhas do mesmo check-out têm a mesma data. A ordem entre elas é arbitrária
+      // (ids aleatórios), mas sempre a mesma, então a paginação por limite não muda (ADR 0016).
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit,
       select: { createdAt: true, type: true, points: true, note: true },

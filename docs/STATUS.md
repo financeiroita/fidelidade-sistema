@@ -9,9 +9,9 @@ _Atualizado: 2026-11-12_
 - Resgate de pontos, catálogo de prêmios, saldo e extrato (ADR 0009).
 - Login por funcionário, papéis (recepção, gerente, administrador) e registro de auditoria (ADR 0010).
 - Área do hóspede "Minha conta" (`/minha-conta`): entrada por código no e-mail, saldo, nível, progresso, vencimentos, extrato e prêmios (ADRs 0013 e 0014). Demonstração sem banco: `npm run demo:minha-conta`.
-- Testes: 170 rápidos (`npm test`, sem banco) e 34 de integração com PostgreSQL de verdade (`npm run test:integration`, versão 18 embutida, sem Docker).
+- Testes: 177 rápidos (`npm test`, sem banco) e 36 de integração com PostgreSQL de verdade (`npm run test:integration`, versão 18 embutida, sem Docker).
 - Correções da revisão geral de 2026-11-12 e da auditoria seguinte (ver ADRs 0011 e 0012).
-- Segunda revisão geral (ADR 0016): pontos valem até o fim do dia do hotel, número da reserva sem diferença de maiúsculas, regra única para nível vencido, `.env` carregado pelo próprio sistema e mais travas de integridade no banco.
+- Segunda revisão geral (ADR 0016): pontos valem até o fim do dia do hotel, número da reserva sem diferença de maiúsculas, regra única para nível vencido, `.env` carregado pelo próprio sistema e mais travas de integridade no banco. A auditoria seguinte (ADR 0017) estendeu o fim do dia à validade do nível e fechou uma brecha no limite do proxy.
 
 ## Pendente técnico
 - Ligar um serviço de e-mail de verdade para o código de acesso da "Minha conta" (depende da pergunta 29).

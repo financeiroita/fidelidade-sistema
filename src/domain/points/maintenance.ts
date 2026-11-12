@@ -1,5 +1,5 @@
 import { loyaltyConfig, type LoyaltyConfig } from '../../config/loyalty';
-import { addMonths } from '../time';
+import { endOfHotelDayAfterMonths } from '../time';
 import { lastValidDay } from './expiry';
 import { resolveTier } from '../tiers/tier';
 
@@ -75,6 +75,6 @@ export function planTierReview(qualifyingPts12m: number, now: Date, cfg: Loyalty
   const reached = resolveTier(qualifyingPts12m, cfg);
   return {
     newRank: reached.rank,
-    validUntil: reached.rank > 0 ? addMonths(now, cfg.tierWindowMonths) : null,
+    validUntil: reached.rank > 0 ? endOfHotelDayAfterMonths(now, cfg.tierWindowMonths, cfg.timeZone) : null,
   };
 }

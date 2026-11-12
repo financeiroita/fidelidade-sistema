@@ -35,6 +35,8 @@ export function makeApp(
   const sent: Array<{ email: string; code: string }> = [];
   /** Pedidos de código rodam em segundo plano; `flush()` espera todos terminarem. */
   const pending: Array<Promise<void>> = [];
+  /** Ids de hóspedes com código errado (o rastro que o servidor grava no log). */
+  const codeFailures: string[] = [];
   const flush = async () => {
     while (pending.length) await pending.shift();
   };
@@ -52,6 +54,7 @@ export function makeApp(
         codeSecret: SECRET,
         sender: { send: async (to, code) => void sent.push({ email: to.email, code }) },
         track: (t) => void pending.push(t),
+        onCodeFailure: (guestId) => void codeFailures.push(guestId),
       },
     },
     { limits: { guestLogin: HIGH, ...limits }, trustProxy },
@@ -78,5 +81,5 @@ export function makeApp(
   // Gerente por padrão: pode tudo menos administrar funcionários.
   const manager = operator('MANAGER', 'Gerente Teste');
 
-  return { app, guests, stays, rewards, authRepo, auditRepo, auth, operator, headers: manager.headers, manager, portalRepo, sent, flush };
+  return { app, guests, stays, rewards, authRepo, auditRepo, auth, operator, headers: manager.headers, manager, portalRepo, sent, flush, codeFailures };
 }

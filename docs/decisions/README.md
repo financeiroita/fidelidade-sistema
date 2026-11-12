@@ -23,4 +23,5 @@ Memória do projeto. Para alterar uma decisão: crie novo ADR e marque o antigo 
 | [0013](0013-area-do-hospede.md) | Área do hóspede ("Minha conta") com código por e-mail | Aceita (limites, fontes e modo de teste ajustados pelo ADR 0014) |
 | [0014](0014-correcoes-da-auditoria-da-area-do-hospede.md) | Correções da auditoria da área do hóspede | Aceita (item 5 e parte do item 7 substituídos pelo ADR 0016) |
 | [0015](0015-instagram-no-programa.md) | Instagram no programa: pontos por marcação do hotel | Proposta (aguarda o hotel) |
-| [0016](0016-correcoes-da-segunda-revisao-geral.md) | Correções da segunda revisão geral | Aceita |
+| [0016](0016-correcoes-da-segunda-revisao-geral.md) | Correções da segunda revisão geral | Aceita (itens 1, 3 e 5 completados pelo ADR 0017) |
+| [0017](0017-correcoes-da-auditoria-do-adr-0016.md) | Correções da auditoria do ADR 0016 | Aceita |

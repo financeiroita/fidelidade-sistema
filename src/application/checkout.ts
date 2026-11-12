@@ -3,8 +3,8 @@ import { loyaltyConfig, type LoyaltyConfig } from '../config/loyalty';
 import { calculateStayPoints, totalPoints } from '../domain/points/earn';
 import { expirationDate } from '../domain/points/expiry';
 import { isDirectChannel, nightsBetween, type StayInput } from '../domain/stays/stay';
-import { addDays, addMonths, localDate } from '../domain/time';
-import { resolveTier } from '../domain/tiers/tier';
+import { addDays, addMonths, endOfHotelDayAfterMonths, localDate } from '../domain/time';
+import { effectiveTierRank, resolveTier } from '../domain/tiers/tier';
 import {
   StayAlreadyProcessedError,
   StayNotEligibleError,
@@ -74,7 +74,9 @@ export function planCheckout(
   // Nível com validade vencida (a rotina noturna ainda não rebaixou, ou falhou): vale o que o
   // hóspede realmente atinge pelos pontos-base dos últimos 12 meses, e não o nível guardado.
   const expired = storedTier.rank > 0 && (!guest.tierValidUntil || guest.tierValidUntil <= now);
-  const tier = expired ? resolveTier(qualifyingBefore, cfg) : storedTier;
+  // Mesma regra do resgate e da "Minha conta" (ADR 0016).
+  const effectiveRank = effectiveTierRank(guest.tierRank, guest.tierValidUntil, qualifyingBefore, now, cfg);
+  const tier = cfg.tiers.find((t) => t.rank === effectiveRank) ?? cfg.tiers[0];
   const lines = calculateStayPoints({ charges: data.charges, isDirect: stay.isDirect }, tier, cfg);
   const expiresAt = expirationDate(now, cfg);
 
@@ -153,7 +155,8 @@ export function decideTier(
   cfg: LoyaltyConfig,
 ): { newTierRank?: number; tierValidUntil?: Date } {
   const reached = resolveTier(qualifyingPts, cfg);
-  const validUntil = addMonths(now, cfg.tierWindowMonths);
+  // O nível vale até o fim do dia do hotel, como os pontos (ADR 0016).
+  const validUntil = endOfHotelDayAfterMonths(now, cfg.tierWindowMonths, cfg.timeZone);
   if (reached.rank > currentRank) return { newTierRank: reached.rank, tierValidUntil: validUntil };
   const current = cfg.tiers.find((t) => t.rank === currentRank);
   if (current && current.rank > 0 && qualifyingPts >= current.minQualifyingPts) return { tierValidUntil: validUntil };
@@ -183,8 +186,15 @@ export async function processCheckout(deps: LoyaltyDeps, stayId: string): Promis
     const data = await deps.stays.loadCheckout(stayId);
     if (!data) throw new StayNotFoundError();
 
-    const tierName = (cfg.tiers.find((t) => t.rank === data.guest.tierRank) ?? cfg.tiers[0]).name;
     if (data.stay.pointsProcessedAt) {
+      // Mesmo no reprocessamento, a resposta mostra o nível que vale agora (ADR 0016).
+      const g = data.guest;
+      const expired = g.tierRank > 0 && (!g.tierValidUntil || g.tierValidUntil <= now);
+      const qualifying = expired
+        ? await deps.stays.qualifyingPointsSince(g.id, addMonths(now, -cfg.tierWindowMonths))
+        : 0;
+      const rank = effectiveTierRank(g.tierRank, g.tierValidUntil, qualifying, now, cfg);
+      const tierName = (cfg.tiers.find((t) => t.rank === rank) ?? cfg.tiers[0]).name;
       return { stayId, alreadyProcessed: true, earned: 0, tier: tierName, upgraded: false };
     }
     if (!data.guest.active) throw new StayNotEligibleError('Hóspede excluído do programa.');

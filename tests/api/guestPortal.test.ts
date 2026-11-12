@@ -321,3 +321,22 @@ describe('página e configuração', () => {
     expect(r.json()).toEqual({ error: 'guest_login_unavailable' });
   });
 });
+
+describe('ajustes da auditoria do ADR 0016', () => {
+  it('código errado deixa rastro só com o id do hóspede; e-mail desconhecido não deixa', async () => {
+    const g = await signup(ana);
+    await post('/me/login/request', { email: ana.email });
+    const wrong = lastCode() === '000000' ? '111111' : '000000';
+    await post('/me/login/verify', { email: ana.email, code: wrong });
+    await post('/me/login/verify', { email: 'ninguem@exemplo.com', code: wrong });
+    expect(ctx.codeFailures).toEqual([g.id]);
+  });
+
+  it('nível vencido que os pontos ainda garantem: mostra o nível, mas não uma validade já passada', async () => {
+    const g = await signup(ana);
+    await earn(g.id, 3500); // pontos-base de Prata
+    ctx.stays.tiers.set(g.id, { rank: 1, validUntil: new Date('2026-02-15T00:00:00Z') }); // vencido
+    const token = await signIn(ana.email);
+    expect((await get('/me', bearer(token))).json().tier).toEqual({ name: 'Prata', multiplier: 1.25, validUntil: null });
+  });
+});

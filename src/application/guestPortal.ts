@@ -165,8 +165,11 @@ export async function getGuestSummary(deps: GuestPortalDeps, guestId: string) {
     tier: {
       name: tier.name,
       multiplier: tier.multiplier,
-      // Validade só quando o nível guardado é o que vale (Bronze não vence).
-      validUntil: rank > 0 && rank === account.tierRank && account.tierValidUntil ? day(account.tierValidUntil) : null,
+      // Último dia do nível, só quando o nível guardado ainda está dentro da validade (Bronze não vence).
+      validUntil:
+        rank > 0 && rank === account.tierRank && account.tierValidUntil && account.tierValidUntil > now
+          ? lastValidDay(account.tierValidUntil, cfg.timeZone)
+          : null,
     },
     points: { available: balance.available, pendingWelcome: balance.pendingWelcome },
     progress: {

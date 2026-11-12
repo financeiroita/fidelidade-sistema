@@ -81,3 +81,31 @@ describe('nível que vale agora (ADR 0016)', () => {
     expect(effectiveTierRank(0, null, 9000, now, loyaltyConfig)).toBe(0); // Bronze só sobe no check-out
   });
 });
+
+describe('ajustes da auditoria do ADR 0016', () => {
+  const tz = loyaltyConfig.timeZone;
+
+  it('proxy: IPv4 escrito como IPv6 segue a regra do /8', () => {
+    for (const bad of ['::ffff:0.0.0.0/96', '::ffff:0.0.0.0/97', '::ffff:0:0/96', '0:0:0:0:0:ffff:0:0/100', '::0.0.0.0/96']) {
+      expect(validProxyAddr(bad), bad).toBe(false);
+    }
+    for (const ok of ['::ffff:10.0.0.0/104', '::ffff:127.0.0.1', '::ffff:7f00:1/128']) {
+      expect(validProxyAddr(ok), ok).toBe(true);
+    }
+  });
+
+  it('horário de verão que começa à meia-noite: o dia começa no primeiro instante que existe', () => {
+    // 04/11/2018 em São Paulo: o relógio pulou de 00:00 para 01:00 (03:00Z).
+    expect(startOfLocalDay('2018-11-04', tz).toISOString()).toBe('2018-11-04T03:00:00.000Z');
+    expect(startOfLocalDay('2026-09-06', 'America/Santiago').toISOString()).toBe('2026-09-06T04:00:00.000Z');
+    // E um dia comum continua igual.
+    expect(startOfLocalDay('2018-11-05', tz).toISOString()).toBe('2018-11-05T02:00:00.000Z');
+  });
+
+  it('créditos do mesmo dia do hotel vencem no mesmo dia, mesmo perto da meia-noite UTC', () => {
+    const morning = expirationDate(new Date('2026-02-28T14:00:00Z'), loyaltyConfig); // 11h de 28/02
+    const night = expirationDate(new Date('2026-03-01T01:00:00Z'), loyaltyConfig); // 22h de 28/02
+    expect(lastValidDay(morning, tz)).toBe('2028-02-28');
+    expect(night.getTime()).toBe(morning.getTime());
+  });
+});

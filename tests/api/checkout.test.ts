@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { StayAlreadyProcessedError } from '../../src/application/ports';
 import { makeApp } from '../helpers';
+import { lastValidDay } from '../../src/domain/time';
 
 let headers: Record<string, string>; // gerente de teste (ver tests/helpers.ts)
 const ana = {
@@ -206,12 +207,12 @@ describe('concorrência no mesmo hóspede', () => {
     const g = await signup(ana);
     await complete(g.id, [{ category: 'ROOM', amount: 3500 }], 'OTA');
     const first = ctx.stays.tiers.get(g.id)!.validUntil!;
-    expect(first.toISOString().startsWith('2027-07-13')).toBe(true);
+    expect(lastValidDay(first, 'America/Sao_Paulo')).toBe('2027-07-13');
     // Simula um nível conquistado há tempos, ainda válido mas perto de vencer.
     ctx.stays.tiers.set(g.id, { rank: 1, validUntil: new Date('2026-08-01T00:00:00Z') });
     await complete(g.id, [{ category: 'ROOM', amount: 100 }], 'OTA');
     expect(ctx.stays.tiers.get(g.id)!.rank).toBe(1);
-    expect(ctx.stays.tiers.get(g.id)!.validUntil!.toISOString().startsWith('2027-07-13')).toBe(true);
+    expect(lastValidDay(ctx.stays.tiers.get(g.id)!.validUntil!, 'America/Sao_Paulo')).toBe('2027-07-13');
   });
 
   it('nível vencido e parcialmente mantido: a resposta mostra o nível que os pontos garantem com esta estadia (ADR 0016)', async () => {
@@ -227,7 +228,7 @@ describe('concorrência no mesmo hóspede', () => {
     ctx.stays.tiers.set(g.id, { rank: 1, validUntil: new Date('2026-07-01T00:00:00Z') });
     const r = await complete(g.id, [{ category: 'ROOM', amount: 3500 }], 'OTA');
     expect(ctx.stays.tiers.get(g.id)).toMatchObject({ rank: 1 });
-    expect(ctx.stays.tiers.get(g.id)!.validUntil!.toISOString().startsWith('2027-07-13')).toBe(true);
+    expect(lastValidDay(ctx.stays.tiers.get(g.id)!.validUntil!, 'America/Sao_Paulo')).toBe('2027-07-13');
     expect(r).toMatchObject({ tier: 'Prata', upgraded: false });
   });
 
@@ -368,5 +369,26 @@ describe('indicação (ADR 0006)', () => {
     await complete(b.id, [{ category: 'ROOM', amount: 1000 }], 'OTA');
     expect(ctx.stays.balance(b.id)).toBe(2500);
     expect(ctx.stays.balance(a.id)).toBe(1000);
+  });
+});
+
+describe('nível vencido no check-out: os três casos (ADR 0016)', () => {
+  it('pontos garantem o mesmo nível: renova; garantem um nível acima: sobe', async () => {
+    const g = await signup(ana);
+    ctx.stays.tiers.set(g.id, { rank: 1, validUntil: new Date('2026-07-01T00:00:00Z') }); // Prata vencida
+    const same = await complete(g.id, [{ category: 'ROOM', amount: 3500 }], 'OTA');
+    expect(same).toMatchObject({ tier: 'Prata', upgraded: false });
+    const h = await signup(bia);
+    ctx.stays.tiers.set(h.id, { rank: 1, validUntil: new Date('2026-07-01T00:00:00Z') });
+    const up = await complete(h.id, [{ category: 'ROOM', amount: 9000 }], 'OTA');
+    expect(up).toMatchObject({ tier: 'Ouro', upgraded: true });
+  });
+
+  it('reprocessar o check-out responde com o nível que vale agora', async () => {
+    const g = await signup(ana);
+    const { id } = (await stay(g.id, [{ category: 'ROOM', amount: 3500 }], 'OTA', { externalRef: 'REP-1' })).json();
+    await checkout(id);
+    ctx.stays.tiers.set(g.id, { rank: 2, validUntil: new Date('2026-07-01T00:00:00Z') }); // Ouro vencido
+    expect((await checkout(id)).json()).toMatchObject({ alreadyProcessed: true, tier: 'Prata' });
   });
 });

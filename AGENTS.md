@@ -44,7 +44,7 @@ Leia primeiro: `README.md`, depois `docs/decisions/README.md` (índice de decis�
 - **Datas de lançamento** vêm do relógio da aplicação (`now` injetado nos casos de uso), não do `now()` do banco, para os testes controlarem o tempo.
 - **"Hoje" do hotel** é calculado no fuso `America/Sao_Paulo` (`loyaltyConfig.timeZone`).
 - **Nunca** grave dados pessoais do hóspede (nome, CPF, e-mail, telefone) nem senhas ou a mensagem de erro do banco em log ou auditoria; só ids, códigos e contagens. A auditoria guarda o nome do funcionário que fez a ação (ADR 0010).
-- **Validade dos pontos**: valem até o fim do dia do hotel (`expirationDate`); para mostrar ao hóspede use `lastValidDay` (ADR 0016).
+- **Validade dos pontos e do nível**: valem até o fim do dia do hotel (`endOfHotelDayAfterMonths`); para mostrar ao hóspede use `lastValidDay` (ADRs 0016 e 0017).
 - **Nível que vale agora**: sempre `effectiveTierRank` (check-out, resgate e "Minha conta" usam a mesma regra, ADR 0016).
 - **Números do programa** (pontos por real, limiares, validade, bônus) só em `src/config/loyalty.ts`; nada de número mágico espalhado.
 

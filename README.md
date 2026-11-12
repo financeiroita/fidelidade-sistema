@@ -21,7 +21,7 @@ Estado atual (2026-11-12): o núcleo do programa funciona e está testado, inclu
 Leia `AGENTS.md` antes de editar (vale para qualquer IA).
 
 ## Instalação passo a passo
-1. **Node 20 ou mais novo** instalado. Depois de clonar o repositório, rode o preparo do Git:
+1. **Node 20.12 ou mais novo** instalado. Depois de clonar o repositório, rode o preparo do Git:
    - Windows: `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1`
    - Linux/Mac: `scripts/setup.sh`
 2. Instale as dependências: `npm install`
@@ -92,7 +92,7 @@ O servidor e os comandos (`npm run ...`) leem o arquivo `.env` da pasta do proje
 - `DATABASE_URL`: endereço do banco.
 - `DOCUMENT_HASH_SECRET`: chave do CPF (passo 3).
 - `PORT`: porta da API (padrão 3000).
-- `TRUST_PROXY_ADDRS`: **só** quando o servidor estiver atrás de um proxy ou balanceador **seu** (ex.: Nginx, balanceador da nuvem). É o endereço desse proxy, ou a faixa de endereços dele (ex.: `127.0.0.1` se o Nginx roda na mesma máquina, ou `10.0.0.0/8`), separados por vírgula. Faixas mais largas que `/8` são recusadas. Assim a API enxerga o IP real do visitante no limite de tentativas. Só pedidos vindos desses endereços podem informar o IP; quem conecta direto não consegue falsificá-lo. As antigas `TRUST_PROXY` e `TRUST_PROXY_HOPS` não valem mais: o servidor não inicia se encontrar uma delas (ADR 0012).
+- `TRUST_PROXY_ADDRS`: **só** quando o servidor estiver atrás de um proxy ou balanceador **seu** (ex.: Nginx, balanceador da nuvem). É o endereço desse proxy, ou a faixa de endereços dele (ex.: `127.0.0.1` se o Nginx roda na mesma máquina, ou `10.0.0.0/8`), separados por vírgula. Faixas mais largas que `/8` (IPv4) ou `/32` (IPv6) são recusadas; um IPv4 escrito como IPv6 (`::ffff:10.0.0.0/104`) segue a regra do IPv4. Assim a API enxerga o IP real do visitante no limite de tentativas. Só pedidos vindos desses endereços podem informar o IP; quem conecta direto não consegue falsificá-lo. As antigas `TRUST_PROXY` e `TRUST_PROXY_HOPS` não valem mais: o servidor não inicia se encontrar uma delas (ADR 0012).
 
 - `GUEST_CODE_DELIVERY`: como o código de acesso da "Minha conta" chega ao hóspede. Hoje só existe `console` (o código aparece no terminal; **só para testes**: exige também `NODE_ENV=development` no `.env` e o banco nesta máquina; fora disso o servidor não inicia). Sem a variável, o login do hóspede responde 503 até o hotel escolher o serviço de e-mail (pergunta 29).
 

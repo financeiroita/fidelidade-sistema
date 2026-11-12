@@ -20,7 +20,11 @@ export function validProxyAddr(v: string): boolean {
   if (prefix === undefined) return true;
   if (!/^\d{1,3}$/.test(prefix)) return false;
   const n = Number(prefix);
-  return kind === 4 ? n >= 8 && n <= 32 : n >= 32 && n <= 128;
+  if (kind === 4) return n >= 8 && n <= 32;
+  // IPv4 escrito como IPv6 (::ffff:10.0.0.0/104): vale a regra do IPv4, ou seja, pelo menos 96 + 8.
+  // Sem isso, ::ffff:0.0.0.0/96 confiaria em todo o IPv4 (ADR 0016).
+  const embedsIpv4 = ip.includes('.') || /^(0*:)*:?ffff:/i.test(ip) || /^::ffff/i.test(ip);
+  return embedsIpv4 ? n >= 104 && n <= 128 : n >= 32 && n <= 128;
 }
 
 /** Endereços dos proxies confiáveis (TRUST_PROXY_ADDRS), ou false se não houver proxy. */

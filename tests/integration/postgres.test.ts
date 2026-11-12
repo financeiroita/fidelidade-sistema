@@ -596,6 +596,19 @@ describe('correções da revisão geral (ADR 0011)', () => {
   });
 });
 
+describe('nível vencido no resgate (ADR 0016)', () => {
+  it('vale o que os pontos-base garantem, lidos sob a trava no banco', async () => {
+    const g = await newGuest();
+    await stayDone(g.id, 3500); // Prata pelos pontos
+    const ouro = await prisma.tier.findUniqueOrThrow({ where: { rank: 2 } });
+    await prisma.guest.update({ where: { id: g.id }, data: { tierId: ouro.id, tierValidUntil: new Date('2026-02-01T00:00:00Z') } });
+    const prata = (await post('/rewards', { name: 'Jantar Prata', type: 'DINING', pointsCost: 500, minTierRank: 1 })).json();
+    const gold = (await post('/rewards', { name: 'Upgrade Ouro', type: 'UPGRADE', pointsCost: 500, minTierRank: 2 })).json();
+    expect((await post('/redemptions', { guestId: g.id, rewardId: gold.id, requestId: 'req-pg-ouro-1' })).json().error).toBe('tier_too_low');
+    expect((await post('/redemptions', { guestId: g.id, rewardId: prata.id, requestId: 'req-pg-prata-1' })).statusCode).toBe(201);
+  });
+});
+
 describe('área do hóspede (ADRs 0013 e 0014)', () => {
   const get = (url: string, h: Record<string, string>) => app.inject({ method: 'GET', url, headers: h });
   const post = async (url: string, payload?: object, h: Record<string, string> = headers) => {
@@ -665,6 +678,20 @@ describe('área do hóspede (ADRs 0013 e 0014)', () => {
     const total = (await prisma.guestLoginCode.aggregate({ where: { guestId: g.id }, _sum: { attempts: true } }))._sum.attempts;
     expect(total).toBe(10);
     expect((await post('/me/login/verify', { email: ana.email, code: sent[2].code }, {})).statusCode).toBe(401);
+  });
+
+  it('hóspede bloqueado por 10 erros não recebe código novo (ADR 0016)', async () => {
+    const g = await newGuest();
+    await post('/me/login/request', { email: ana.email }, {});
+    await post('/me/login/request', { email: ana.email }, {});
+    const codes = new Set(sent.map((x) => x.code));
+    const wrong = Array.from({ length: 100 }, (_, i) => String(i).padStart(6, '0')).filter((c) => !codes.has(c)).slice(0, 10);
+    for (const code of wrong) await post('/me/login/verify', { email: ana.email, code }, {});
+    const before = await prisma.guestLoginCode.count({ where: { guestId: g.id } });
+    clock = new Date(clock.getTime() + 20 * 60_000);
+    await post('/me/login/request', { email: ana.email }, {});
+    expect(await prisma.guestLoginCode.count({ where: { guestId: g.id } })).toBe(before);
+    expect(sent).toHaveLength(2);
   });
 
   it('a rotina noturna apaga sessões de hóspede vencidas', async () => {
