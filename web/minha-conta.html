@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Minha conta</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/minha-conta.css">
+<script src="/minha-conta.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-row">
+    <span class="brand">Programa de Fidelidade</span>
+    <button type="button" id="logout" class="link" hidden>Sair</button>
+  </div>
+</header>
+
+<main>
+  <!-- 1. E-mail -->
+  <section id="step-email" class="wrap narrow" hidden>
+    <p class="eyebrow">Minha conta</p>
+    <h1>Seus pontos, seu nível e seus prêmios.</h1>
+    <p class="lead">Informe o e-mail do seu cadastro. Enviaremos um código de 6 dígitos para você entrar, sem senha.</p>
+    <form id="form-email" class="card form" novalidate>
+      <label>E-mail
+        <input id="email" type="email" autocomplete="email" inputmode="email" required maxlength="160">
+      </label>
+      <p class="error" id="email-error" role="alert" hidden></p>
+      <button class="primary" type="submit">Receber código</button>
+    </form>
+    <p class="note">Ainda não participa? Peça o cadastro na recepção.</p>
+  </section>
+
+  <!-- 2. Código -->
+  <section id="step-code" class="wrap narrow" hidden>
+    <p class="eyebrow">Minha conta</p>
+    <h1>Confira seu e-mail.</h1>
+    <p class="lead">Se <strong id="code-email"></strong> estiver cadastrado, você vai receber um código em instantes. Ele vale por 10 minutos.</p>
+    <form id="form-code" class="card form" novalidate>
+      <label>Código de 6 dígitos
+        <input id="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required class="code-input">
+      </label>
+      <p class="error" id="code-error" role="alert" hidden></p>
+      <button class="primary" type="submit">Entrar</button>
+      <button class="link" type="button" id="back">Usar outro e-mail ou pedir novo código</button>
+    </form>
+  </section>
+
+  <!-- 3. Conta -->
+  <section id="step-account" hidden>
+    <div class="hero">
+      <div class="wrap">
+        <p class="hello">Olá, <span id="first-name"></span></p>
+        <div class="hero-grid">
+          <div>
+            <p class="label">Pontos disponíveis</p>
+            <p class="balance" id="balance">0</p>
+            <p class="small" id="pending" hidden></p>
+          </div>
+          <div class="tier-box">
+            <p class="label">Seu nível</p>
+            <p class="tier-name" id="tier-name"></p>
+            <p class="small" id="tier-detail"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap stack">
+      <section class="card" aria-labelledby="h-progress">
+        <h2 id="h-progress">Próximo nível</h2>
+        <p class="muted" id="progress-text"></p>
+        <div class="bar" role="progressbar" aria-labelledby="h-progress" id="progress-bar" aria-valuemin="0" aria-valuemax="100"><i id="progress-fill"></i></div>
+        <p class="note">Contam para o nível os pontos-base dos últimos 12 meses (o valor gasto, sem bônus).</p>
+      </section>
+
+      <section class="card" aria-labelledby="h-expiring">
+        <h2 id="h-expiring">Pontos a vencer</h2>
+        <ul class="rows" id="expiring"></ul>
+        <p class="muted" id="expiring-empty" hidden>Nenhum ponto vencendo por enquanto.</p>
+      </section>
+
+      <section aria-labelledby="h-rewards">
+        <h2 id="h-rewards">Prêmios</h2>
+        <p class="muted">Para resgatar, fale com a recepção. Os pontos que vencem primeiro são usados antes.</p>
+        <div class="rewards" id="rewards"></div>
+        <p class="muted" id="rewards-empty" hidden>O catálogo de prêmios ainda não foi publicado.</p>
+      </section>
+
+      <section class="card" aria-labelledby="h-statement">
+        <h2 id="h-statement">Extrato</h2>
+        <ul class="rows statement" id="statement"></ul>
+        <p class="muted" id="statement-empty" hidden>Seus pontos aparecem aqui depois do check-out.</p>
+      </section>
+
+      <section class="card referral" aria-labelledby="h-referral">
+        <h2 id="h-referral">Indique um amigo</h2>
+        <p class="muted">Quando seu amigo se cadastrar com o seu código e fizer a primeira estadia, você ganha pontos de presente.</p>
+        <div class="code-row">
+          <span class="ref-code" id="ref-code"></span>
+          <button type="button" class="secondary" id="copy">Copiar código</button>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <p class="wrap error-box" id="fatal" role="alert" hidden></p>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Seus dados são usados só para o programa. Para pedir acesso, correção ou exclusão, fale com [contato do hotel].</p>
+  </div>
+</footer>
+</body>
+</html>

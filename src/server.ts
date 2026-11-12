@@ -2,6 +2,8 @@ import { isIP } from 'node:net';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from './api/app';
 import { PrismaAuditRepository, PrismaAuthRepository } from './infra/prisma/authRepository';
+import type { GuestCodeSender } from './application/ports';
+import { PrismaGuestPortalRepository } from './infra/prisma/guestPortalRepository';
 import { PrismaGuestRepository } from './infra/prisma/guestRepository';
 import { PrismaRewardRepository } from './infra/prisma/rewardRepository';
 import { PrismaStayRepository } from './infra/prisma/stayRepository';
@@ -46,12 +48,42 @@ function proxyAddrs(): string[] | false {
   return list;
 }
 
+/**
+ * Envio do código de acesso do hóspede. O provedor de e-mail ainda não foi escolhido pelo hotel
+ * (pergunta em aberto); até lá só existe o modo de teste, que mostra o código no terminal.
+ */
+function guestCodeSender(): GuestCodeSender | undefined {
+  const mode = process.env.GUEST_CODE_DELIVERY;
+  if (!mode) return undefined; // "Minha conta" fica sem login (503) até configurar
+  if (mode === 'console') {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('GUEST_CODE_DELIVERY=console é só para testes; não use em produção.');
+      process.exit(1);
+    }
+    return {
+      // Sem o e-mail no terminal: só o código, para testar a tela.
+      send: async (_to, code) => console.log(`[TESTE] código de acesso do hóspede: ${code}`),
+    };
+  }
+  console.error('GUEST_CODE_DELIVERY inválido. Valores aceitos hoje: console (só para testes).');
+  process.exit(1);
+}
+
 const prisma = new PrismaClient();
+const stays = new PrismaStayRepository(prisma);
+const rewards = new PrismaRewardRepository(prisma);
 const app = buildApp(
   {
     signup: { repo: new PrismaGuestRepository(prisma), documentSecret: secret },
-    loyalty: { stays: new PrismaStayRepository(prisma) },
-    rewards: { repo: new PrismaRewardRepository(prisma) },
+    loyalty: { stays },
+    rewards: { repo: rewards },
+    guestPortal: {
+      repo: new PrismaGuestPortalRepository(prisma),
+      rewards,
+      stays,
+      sender: guestCodeSender(),
+      onSendError: (errName) => console.error(JSON.stringify({ at: new Date().toISOString(), event: 'falha-envio-codigo', errName })),
+    },
     auth: {
       repo: new PrismaAuthRepository(prisma),
       audit: new PrismaAuditRepository(prisma),

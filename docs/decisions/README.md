@@ -20,3 +20,4 @@ Memória do projeto. Para alterar uma decisão: crie novo ADR e marque o antigo 
 | [0010](0010-login-de-funcionarios-e-auditoria.md) | Login de funcionários, permissões e auditoria | Aceita |
 | [0011](0011-correcoes-da-revisao-geral.md) | Correções da revisão geral | Aceita (item 8 substituído pelo ADR 0012) |
 | [0012](0012-proxy-por-endereco-e-correcoes-da-auditoria.md) | Proxy por endereço e correções da auditoria | Aceita |
+| [0013](0013-area-do-hospede.md) | Área do hóspede ("Minha conta") com código por e-mail | Aceita (provedor de e-mail a definir) |

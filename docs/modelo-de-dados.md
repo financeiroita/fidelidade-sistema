@@ -18,6 +18,8 @@ erDiagram
   Guest ||--o{ ExpiryNotice : avisos
   Guest ||--o{ Guest : indica
   Operator ||--o{ Session : sessoes
+  Guest ||--o{ GuestLoginCode : codigos
+  Guest ||--o{ GuestSession : sessoes_hospede
 ```
 
 ## Tabelas
@@ -33,6 +35,8 @@ erDiagram
 | `Campaign` | Campanhas de bônus (tabela pronta; regra ainda não implementada) |
 | `Operator` | Funcionário com login; senha só como hash scrypt, papel, tentativas falhas e trava (ADR 0010) |
 | `Session` | Sessão de login; guarda só o hash do token; dura 12 horas (ADR 0010) |
+| `GuestLoginCode` | Código de acesso do hóspede à "Minha conta"; só o hash, 10 minutos, 5 tentativas (ADR 0013) |
+| `GuestSession` | Sessão do hóspede na "Minha conta"; só o hash do token; dura 24 horas; separada da sessão de funcionário (ADR 0013) |
 | `AuditLog` | Quem fez o quê e quando; só ids e contagens, nunca dados pessoais; sem vínculo com `Operator` para o histórico sobreviver (ADR 0010) |
 
 ## Princípios

@@ -112,6 +112,8 @@ model Guest {
   pointsTx         PointsTransaction[]
   redemptions      Redemption[]
   expiryNotices    ExpiryNotice[]
+  loginCodes       GuestLoginCode[]
+  guestSessions    GuestSession[]
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
   deletedAt        DateTime? // anonimização LGPD
@@ -295,6 +297,34 @@ model Session {
   createdAt  DateTime @default(now())
 
   @@index([operatorId])
+  @@index([expiresAt])
+}
+
+// Código de acesso do hóspede (enviado por e-mail). Só o hash; vale poucos minutos e poucas tentativas.
+model GuestLoginCode {
+  id        String    @id @default(uuid())
+  guestId   String
+  guest     Guest     @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  codeHash  String
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime? // usado ou queimado (tentativas esgotadas / código mais novo pedido)
+  createdAt DateTime
+
+  @@index([guestId, createdAt])
+  @@index([expiresAt])
+}
+
+// Sessão do hóspede na "Minha conta". Separada da sessão de funcionário: nunca dá acesso interno.
+model GuestSession {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  guestId   String
+  guest     Guest    @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime
+
+  @@index([guestId])
   @@index([expiresAt])
 }
 

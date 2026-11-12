@@ -9,6 +9,7 @@
     "start": "tsx src/server.ts",
     "db:seed": "tsx prisma/seed.ts",
     "job:nightly": "tsx src/jobs/nightly.ts",
+    "demo:minha-conta": "tsx src/jobs/demoMinhaConta.ts",
     "operator:create": "tsx src/jobs/createOperator.ts",
     "operator:unlock": "tsx src/jobs/unlockOperator.ts",
     "test": "vitest run",

@@ -255,6 +255,52 @@ export interface MaintenanceRepository {
   saveNotices(notices: NoticePlan[]): Promise<number>;
 }
 
+// ---- Área do hóspede ("Minha conta", ADR 0013) ----
+export interface GuestAccount {
+  id: string;
+  fullName: string;
+  tierRank: number;
+  tierValidUntil: Date | null;
+  referralCode: string;
+  memberSince: Date;
+}
+
+/** Código errado, vencido ou já usado (resposta sempre a mesma, para não revelar o motivo). */
+export class InvalidLoginCodeError extends Error {}
+/** O envio de códigos não está configurado neste servidor. */
+export class GuestLoginUnavailableError extends Error {}
+
+export interface GuestPortalRepository {
+  /** Hóspede ativo (não excluído) com este e-mail. */
+  findActiveGuestByEmail(email: string): Promise<{ id: string; email: string; fullName: string } | null>;
+  /**
+   * Trava o hóspede, recusa (false) se já foram pedidos `max` códigos desde `since`, queima os
+   * códigos anteriores ainda válidos e grava o novo. Atômico.
+   */
+  issueLoginCode(
+    c: { id: string; guestId: string; codeHash: string; expiresAt: Date; now: Date },
+    limit: { since: Date; max: number },
+  ): Promise<boolean>;
+  /**
+   * Confere o código válido mais recente do hóspede. Toda tentativa conta; ao acertar ou ao
+   * esgotar `maxAttempts`, o código é queimado. Atômico (tentativas simultâneas contam todas).
+   */
+  verifyLoginCode(guestId: string, codeHash: string, now: Date, maxAttempts: number): Promise<boolean>;
+  createGuestSession(s: { tokenHash: string; guestId: string; expiresAt: Date; now: Date }): Promise<void>;
+  /** Sessão de hóspede ativo (sessão de hóspede excluído não vale). */
+  findGuestSession(tokenHash: string): Promise<{ guestId: string; expiresAt: Date } | null>;
+  deleteGuestSession(tokenHash: string): Promise<void>;
+  /** Dados da conta do hóspede ativo, ou null. */
+  getAccount(guestId: string): Promise<GuestAccount | null>;
+  /** Próximos vencimentos (lotes com saldo e ainda válidos), mais cedo primeiro. */
+  upcomingExpirations(guestId: string, now: Date, limit: number): Promise<Array<{ expiresAt: Date; points: number }>>;
+}
+
+/** Envia o código de acesso ao hóspede (e-mail). A implementação real depende do provedor do hotel. */
+export interface GuestCodeSender {
+  send(to: { email: string; firstName: string }, code: string): Promise<void>;
+}
+
 export interface GuestRepository {
   findByDocumentHash(hash: string): Promise<{ id: string } | null>;
   findByEmail(email: string): Promise<{ id: string } | null>;

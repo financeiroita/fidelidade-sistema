@@ -6,7 +6,14 @@ export class PrismaMaintenanceRepository implements MaintenanceRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async purgeExpiredSessions(now: Date): Promise<number> {
-    return (await this.prisma.session.deleteMany({ where: { expiresAt: { lte: now } } })).count;
+    // Sessões de funcionários e de hóspedes, e códigos de acesso vencidos.
+    const [ops, guests] = await Promise.all([
+      this.prisma.session.deleteMany({ where: { expiresAt: { lte: now } } }),
+      this.prisma.guestSession.deleteMany({ where: { expiresAt: { lte: now } } }),
+      // Códigos guardados por 1 dia depois de vencer (o limite de pedidos por hóspede conta com eles).
+      this.prisma.guestLoginCode.deleteMany({ where: { expiresAt: { lte: new Date(now.getTime() - 86_400_000) } } }),
+    ]);
+    return ops.count + guests.count;
   }
 
   async loadActiveLots(until: Date): Promise<LotRow[]> {

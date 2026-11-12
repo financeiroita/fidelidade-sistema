@@ -9,6 +9,7 @@ import { StayNotEligibleError } from '../../src/application/ports';
 import { runNightly } from '../../src/application/maintenance';
 import { loyaltyConfig } from '../../src/config/loyalty';
 import { PrismaAuditRepository, PrismaAuthRepository } from '../../src/infra/prisma/authRepository';
+import { PrismaGuestPortalRepository } from '../../src/infra/prisma/guestPortalRepository';
 import { PrismaGuestRepository } from '../../src/infra/prisma/guestRepository';
 import { PrismaMaintenanceRepository } from '../../src/infra/prisma/maintenanceRepository';
 import { PrismaRewardRepository } from '../../src/infra/prisma/rewardRepository';
@@ -24,6 +25,7 @@ let app: ReturnType<typeof buildApp>;
 let authRepo: PrismaAuthRepository;
 let headers: Record<string, string>;
 let seq = 0;
+let sent: Array<{ email: string; code: string }> = [];
 
 const ana = {
   fullName: 'Ana Souza',
@@ -97,20 +99,30 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE "AuditLog","Session","Operator","ExpiryNotice","RedemptionLot","Redemption","Reward","PointsTransaction","StayCharge","Stay","Guest" RESTART IDENTITY CASCADE',
+    'TRUNCATE "AuditLog","Session","GuestSession","GuestLoginCode","Operator","ExpiryNotice","RedemptionLot","Redemption","Reward","PointsTransaction","StayCharge","Stay","Guest" RESTART IDENTITY CASCADE',
   );
   clock = new Date('2026-03-01T12:00:00Z');
   const now = () => clock;
   authRepo = new PrismaAuthRepository(prisma);
   const auditRepo = new PrismaAuditRepository(prisma);
+  const stays = new PrismaStayRepository(prisma);
+  const rewards = new PrismaRewardRepository(prisma);
+  sent = [];
   app = buildApp(
     {
       signup: { repo: new PrismaGuestRepository(prisma), documentSecret: SECRET, now },
-      loyalty: { stays: new PrismaStayRepository(prisma), now },
-      rewards: { repo: new PrismaRewardRepository(prisma), now },
+      loyalty: { stays, now },
+      rewards: { repo: rewards, now },
       auth: { repo: authRepo, audit: auditRepo, now },
+      guestPortal: {
+        repo: new PrismaGuestPortalRepository(prisma),
+        rewards,
+        stays,
+        now,
+        sender: { send: async (to, code) => void sent.push({ email: to.email, code }) },
+      },
     },
-    { limits: { login: HIGH, password: HIGH, guests: HIGH } },
+    { limits: { login: HIGH, password: HIGH, guests: HIGH, guestLogin: HIGH } },
   );
   await createOperator({ repo: authRepo, audit: auditRepo, now }, { username: 'gerente', name: 'Gerente', role: 'MANAGER', password: PASSWORD });
   headers = await loginAs('gerente');
@@ -528,5 +540,60 @@ describe('correções da revisão geral (ADR 0011)', () => {
     for (const t of txs) expect(t.createdAt.toISOString()).toBe('2026-03-01T12:00:00.000Z');
     const guest = await prisma.guest.findUniqueOrThrow({ where: { id: g.id } });
     expect(guest.memberSince.toISOString()).toBe('2026-03-01T12:00:00.000Z');
+  });
+});
+
+describe('área do hóspede (ADR 0013)', () => {
+  const get = (url: string, h: Record<string, string>) => app.inject({ method: 'GET', url, headers: h });
+
+  it('entra com o código e vê saldo, nível e vencimentos; o código não fica em texto no banco', async () => {
+    const g = await newGuest();
+    await stayDone(g.id, 3500);
+    expect((await post('/me/login/request', { email: ana.email }, {})).statusCode).toBe(202);
+    const code = sent[0].code;
+    const row = await prisma.guestLoginCode.findFirstOrThrow({ where: { guestId: g.id } });
+    expect(row.codeHash).not.toContain(code);
+    const v = await post('/me/login/verify', { email: ana.email, code }, {});
+    expect(v.statusCode).toBe(200);
+    const h = { authorization: `Bearer ${v.json().token}` };
+    expect((await prisma.guestSession.findFirstOrThrow({ where: { guestId: g.id } })).tokenHash).not.toBe(v.json().token);
+    const me = (await get('/me', h)).json();
+    expect(me).toMatchObject({
+      points: { available: 3500 },
+      tier: { name: 'Prata', validUntil: '2027-03-01' },
+      expiring: [{ date: '2028-03-01', points: 3500 }],
+    });
+    expect((await get('/me/statement', h)).json()).toHaveLength(1);
+  });
+
+  it('20 palpites simultâneos: todos contam e o código queima depois de 5', async () => {
+    await newGuest();
+    await post('/me/login/request', { email: ana.email }, {});
+    const right = sent[0].code;
+    const wrong = Array.from({ length: 20 }, (_, i) => String((Number(right) + 1 + i) % 1_000_000).padStart(6, '0'));
+    const rs = await Promise.all(wrong.map((code) => post('/me/login/verify', { email: ana.email, code }, {})));
+    expect(rs.every((r) => r.statusCode === 401)).toBe(true);
+    const row = await prisma.guestLoginCode.findFirstOrThrow();
+    expect(row.attempts).toBe(5);
+    expect(row.usedAt).not.toBeNull();
+    expect((await post('/me/login/verify', { email: ana.email, code: right }, {})).statusCode).toBe(401);
+  });
+
+  it('10 pedidos de código simultâneos: no máximo 3 gravados e só 1 válido', async () => {
+    const g = await newGuest();
+    const rs = await Promise.all(Array.from({ length: 10 }, () => post('/me/login/request', { email: ana.email }, {})));
+    expect(rs.every((r) => r.statusCode === 202)).toBe(true);
+    expect(await prisma.guestLoginCode.count({ where: { guestId: g.id } })).toBe(3);
+    expect(await prisma.guestLoginCode.count({ where: { guestId: g.id, usedAt: null } })).toBe(1);
+  });
+
+  it('a rotina noturna apaga sessões de hóspede vencidas', async () => {
+    const g = await newGuest();
+    await post('/me/login/request', { email: ana.email }, {});
+    await post('/me/login/verify', { email: ana.email, code: sent[0].code }, {});
+    clock = new Date(clock.getTime() + 2 * 86_400_000);
+    await runNightly({ repo: new PrismaMaintenanceRepository(prisma), now: () => clock });
+    expect(await prisma.guestSession.count({ where: { guestId: g.id } })).toBe(0);
+    expect(await prisma.guestLoginCode.count({ where: { guestId: g.id } })).toBe(0);
   });
 });

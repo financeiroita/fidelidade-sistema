@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -15,14 +17,26 @@ import {
 } from '../application/auth';
 import { processCheckout, registerStay, type LoyaltyDeps } from '../application/checkout';
 import {
+  authenticateGuest,
+  getGuestRewards,
+  getGuestStatement,
+  getGuestSummary,
+  logoutGuest,
+  requestLoginCode,
+  verifyLoginCode,
+  type GuestPortalDeps,
+} from '../application/guestPortal';
+import {
   CannotDeactivateSelfError,
   CannotResetOwnPasswordError,
   DuplicateGuestError,
   DuplicateOperatorError,
   DuplicateStayError,
   StayOutOfPeriodError,
+  GuestLoginUnavailableError,
   GuestNotFoundError,
   InsufficientPointsError,
+  InvalidLoginCodeError,
   InvalidCredentialsError,
   InvalidStayError,
   InvalidTransitionError,
@@ -67,6 +81,8 @@ declare module 'fastify' {
   interface FastifyRequest {
     principal: Principal | null;
     bearer: string | null;
+    /** Hóspede logado na "Minha conta" (só nas rotas /me). */
+    guestId: string | null;
   }
 }
 
@@ -75,6 +91,8 @@ export interface AppDeps {
   loyalty: LoyaltyDeps;
   rewards: RewardDeps;
   auth: AuthDeps;
+  /** Área do hóspede ("Minha conta"). Sem ela, as rotas /me e a página não existem. */
+  guestPortal?: GuestPortalDeps;
 }
 
 export interface AppOptions {
@@ -85,8 +103,29 @@ export interface AppOptions {
    */
   trustProxy?: string[] | false;
   /** Pedidos por minuto, por IP, nas rotas abertas e sensíveis. */
-  limits?: { login?: number; password?: number; guests?: number };
+  limits?: { login?: number; password?: number; guests?: number; guestLogin?: number };
+  /** Pasta da página "Minha conta" (padrão: ./web). */
+  webDir?: string;
 }
+
+const guestEmailSchema = z.object({ email: z.string().trim().toLowerCase().email().max(160) });
+const guestCodeSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(160),
+  code: z.string().trim().regex(/^\d{6}$/),
+});
+
+/** A página do hóspede só carrega o próprio script e as fontes; nada de terceiros. */
+const PAGE_CSP = [
+  "default-src 'none'",
+  "script-src 'self'",
+  "style-src 'self' https://fonts.googleapis.com",
+  'font-src https://fonts.gstatic.com',
+  "connect-src 'self'",
+  "img-src 'self' data:",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join('; ');
 
 const validationError = (issues: Array<{ path: Array<string | number>; message: string }>) => ({
   error: 'validation_error',
@@ -108,6 +147,7 @@ export function buildApp(deps: AppDeps, opts: AppOptions = {}): FastifyInstance 
   });
   app.decorateRequest('principal', null);
   app.decorateRequest('bearer', null);
+  app.decorateRequest('guestId', null);
 
   // Respostas levam token e dados pessoais: nunca ficam em cache.
   app.addHook('onSend', async (_req, reply) => {
@@ -115,7 +155,7 @@ export function buildApp(deps: AppDeps, opts: AppOptions = {}): FastifyInstance 
     reply.header('x-content-type-options', 'nosniff');
   });
 
-  const limits = { login: 10, password: 10, guests: 20, ...opts.limits };
+  const limits = { login: 10, password: 10, guests: 20, guestLogin: 10, ...opts.limits };
   const limitOf = (max: number) => ({ config: { rateLimit: { max, timeWindow: '1 minute' } } });
 
   app.register(rateLimit, { global: false });
@@ -163,6 +203,10 @@ export function buildApp(deps: AppDeps, opts: AppOptions = {}): FastifyInstance 
       if (e instanceof StayNotEligibleError) return reply.code(409).send({ error: 'stay_not_eligible' });
       if (e instanceof InvalidCredentialsError) return reply.code(401).send({ error: 'invalid_credentials' });
       if (e instanceof WeakPasswordError) return reply.code(422).send({ error: 'weak_password', message: e.message });
+      if (e instanceof InvalidLoginCodeError) return reply.code(401).send({ error: 'invalid_code' });
+      if (e instanceof GuestLoginUnavailableError) {
+        return reply.code(503).send({ error: 'guest_login_unavailable' });
+      }
       if (e instanceof ServiceBusyError) {
         return reply.header('retry-after', '5').code(503).send({ error: 'busy' });
       }
@@ -207,6 +251,81 @@ export function buildApp(deps: AppDeps, opts: AppOptions = {}): FastifyInstance 
         return businessError(e, reply);
       }
     });
+
+    // ---------- Área do hóspede ("Minha conta", ADR 0013) ----------
+    const portal = deps.guestPortal;
+    if (portal) {
+      const webDir = opts.webDir ?? resolve(process.cwd(), 'web');
+      const page = readFileSync(join(webDir, 'minha-conta.html'), 'utf8');
+      const script = readFileSync(join(webDir, 'minha-conta.js'), 'utf8');
+      const style = readFileSync(join(webDir, 'minha-conta.css'), 'utf8');
+      const asset = (body: string, type: string) => async (_req: FastifyRequest, reply: FastifyReply) =>
+        reply
+          .header('content-type', type)
+          .header('content-security-policy', PAGE_CSP)
+          .header('referrer-policy', 'no-referrer')
+          .header('x-frame-options', 'DENY')
+          .send(body);
+      api.get('/minha-conta', asset(page, 'text/html; charset=utf-8'));
+      api.get('/minha-conta.js', asset(script, 'text/javascript; charset=utf-8'));
+      api.get('/minha-conta.css', asset(style, 'text/css; charset=utf-8'));
+
+      // Responde igual exista ou não o e-mail: não revela quem é hóspede.
+      api.post('/me/login/request', { bodyLimit: 1024, ...limitOf(limits.guestLogin) }, async (req, reply) => {
+        const parsed = guestEmailSchema.safeParse(req.body);
+        if (!parsed.success) return reply.code(422).send(validationError(parsed.error.issues));
+        try {
+          await requestLoginCode(portal, parsed.data.email);
+          return reply.code(202).send({ status: 'sent_if_registered' });
+        } catch (e) {
+          return businessError(e, reply);
+        }
+      });
+
+      api.post('/me/login/verify', { bodyLimit: 1024, ...limitOf(limits.guestLogin) }, async (req, reply) => {
+        const parsed = guestCodeSchema.safeParse(req.body);
+        if (!parsed.success) return reply.code(401).send({ error: 'invalid_code' });
+        try {
+          return reply.send(await verifyLoginCode(portal, parsed.data.email, parsed.data.code));
+        } catch (e) {
+          return businessError(e, reply);
+        }
+      });
+
+      // Rotas com a sessão do HÓSPEDE: só os dados dele, nunca de outro (o id vem da sessão, não da URL).
+      api.register(async (me) => {
+        me.addHook('onRequest', async (req, reply) => {
+          const m = /^Bearer ([A-Za-z0-9_-]{20,100})$/.exec(String(req.headers.authorization ?? ''));
+          const guestId = m ? await authenticateGuest(portal, m[1]) : null;
+          if (!m || !guestId) return reply.code(401).send({ error: 'unauthorized' });
+          req.guestId = guestId;
+          req.bearer = m[1];
+        });
+
+        me.get('/me', async (req, reply) => {
+          try {
+            return reply.send(await getGuestSummary(portal, req.guestId as string));
+          } catch (e) {
+            return businessError(e, reply);
+          }
+        });
+        me.get<{ Querystring: { limit?: string } }>('/me/statement', async (req) => {
+          const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit ?? '30', 10) || 30));
+          return getGuestStatement(portal, req.guestId as string, limit);
+        });
+        me.get('/me/rewards', async (req, reply) => {
+          try {
+            return reply.send(await getGuestRewards(portal, req.guestId as string));
+          } catch (e) {
+            return businessError(e, reply);
+          }
+        });
+        me.post('/me/logout', async (req, reply) => {
+          await logoutGuest(portal, req.bearer as string);
+          return reply.code(204).send();
+        });
+      });
+    }
 
     // ---------- Rotas internas: exigem login (Authorization: Bearer <token>) ----------
     api.register(async (internal) => {

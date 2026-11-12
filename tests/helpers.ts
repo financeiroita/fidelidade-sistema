@@ -2,6 +2,7 @@ import { buildApp } from '../src/api/app';
 import type { GuestRepository } from '../src/application/ports';
 import type { Role } from '../src/domain/auth/auth';
 import { InMemoryAuditRepository, InMemoryAuthRepository } from '../src/infra/memory/authRepository';
+import { InMemoryGuestPortalRepository } from '../src/infra/memory/guestPortalRepository';
 import { InMemoryGuestRepository } from '../src/infra/memory/guestRepository';
 import { InMemoryRewardRepository } from '../src/infra/memory/rewardRepository';
 import { InMemoryStayRepository } from '../src/infra/memory/stayRepository';
@@ -15,7 +16,12 @@ const HIGH = 100_000;
 export function makeApp(
   repo: GuestRepository = new InMemoryGuestRepository(),
   now?: () => Date,
-  limits: { login?: number; password?: number; guests?: number } = { login: HIGH, password: HIGH, guests: HIGH },
+  limits: { login?: number; password?: number; guests?: number; guestLogin?: number } = {
+    login: HIGH,
+    password: HIGH,
+    guests: HIGH,
+    guestLogin: HIGH,
+  },
   trustProxy?: string[],
 ) {
   const guests = repo as InMemoryGuestRepository;
@@ -24,14 +30,24 @@ export function makeApp(
   const authRepo = new InMemoryAuthRepository();
   const auditRepo = new InMemoryAuditRepository();
   const auth = { repo: authRepo, audit: auditRepo, now };
+  const portalRepo = new InMemoryGuestPortalRepository(guests, stays);
+  /** Códigos "enviados" ao hóspede (o carteiro de teste só guarda). */
+  const sent: Array<{ email: string; code: string }> = [];
   const app = buildApp(
     {
       signup: { repo, documentSecret: SECRET, now },
       loyalty: { stays, now },
       rewards: { repo: rewards, now },
       auth,
+      guestPortal: {
+        repo: portalRepo,
+        rewards,
+        stays,
+        now,
+        sender: { send: async (to, code) => void sent.push({ email: to.email, code }) },
+      },
     },
-    { limits, trustProxy },
+    { limits: { guestLogin: HIGH, ...limits }, trustProxy },
   );
 
   let n = 0;
@@ -55,5 +71,5 @@ export function makeApp(
   // Gerente por padrão: pode tudo menos administrar funcionários.
   const manager = operator('MANAGER', 'Gerente Teste');
 
-  return { app, guests, stays, rewards, authRepo, auditRepo, auth, operator, headers: manager.headers, manager };
+  return { app, guests, stays, rewards, authRepo, auditRepo, auth, operator, headers: manager.headers, manager, portalRepo, sent };
 }
