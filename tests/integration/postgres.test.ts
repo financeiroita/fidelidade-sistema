@@ -334,3 +334,128 @@ describe('login e funcionários', () => {
     expect(logs).not.toContain('Ana Souza');
   });
 });
+
+// --- Corridas entre operações diferentes sobre o mesmo hóspede/resgate ---------------------------------
+
+const bia = { ...ana, fullName: 'Bia Lima', email: 'bia@exemplo.com', document: '111.444.777-35' };
+
+async function openStay(guestId: string, amount: number) {
+  const day = clock.toISOString().slice(0, 10);
+  const prev = new Date(clock.getTime() - 2 * 86_400_000).toISOString().slice(0, 10);
+  const s = await post('/stays', {
+    guestId,
+    channel: 'OTA',
+    checkIn: prev,
+    checkOut: day,
+    externalRef: `PG-${++seq}`,
+    charges: [{ category: 'ROOM', amount }],
+  });
+  expect(s.statusCode).toBe(201);
+  return s.json().id as string;
+}
+
+describe('indicação e bônus de boas-vindas', () => {
+  it('dois check-outs simultâneos de estadias diferentes do indicado pagam o bônus uma única vez', async () => {
+    const a = await newGuest();
+    const b = (await post('/guests', { ...bia, referralCode: (await prisma.guest.findUniqueOrThrow({ where: { id: a.id } })).referralCode }, {})).json();
+    const [s1, s2] = [await openStay(b.id, 1000), await openStay(b.id, 1000)];
+    const rs = await Promise.all([post(`/stays/${s1}/checkout`), post(`/stays/${s2}/checkout`)]);
+    expect(rs.every((r) => r.statusCode === 200)).toBe(true);
+    expect(await prisma.pointsTransaction.count({ where: { idempotencyKey: `welcome:${b.id}` } })).toBe(1);
+    expect(await prisma.pointsTransaction.count({ where: { idempotencyKey: `referral:${b.id}` } })).toBe(1);
+    expect(await ledger(b.id)).toBe(2000 + 500);
+    expect(await ledger(a.id)).toBe(1000);
+    expect((await prisma.guest.findUniqueOrThrow({ where: { id: b.id } })).welcomeBonusPending).toBe(0);
+  });
+
+  it('vários cadastros simultâneos com o mesmo código de indicação não pagam nada antes do check-out', async () => {
+    const a = await newGuest();
+    const code = (await prisma.guest.findUniqueOrThrow({ where: { id: a.id } })).referralCode;
+    const docs = ['111.444.777-35', '390.533.447-05', '168.995.350-09', '935.411.347-80'];
+    const rs = await Promise.all(
+      docs.map((document, i) => post('/guests', { ...bia, email: `b${i}@exemplo.com`, document, referralCode: code }, {})),
+    );
+    expect(rs.every((r) => r.statusCode === 201)).toBe(true);
+    expect(await prisma.guest.count({ where: { referredById: a.id } })).toBe(4);
+    expect(await ledger(a.id)).toBe(0);
+    expect(new Set((await prisma.guest.findMany()).map((g) => g.referralCode)).size).toBe(5);
+  });
+});
+
+describe('resgate: ações simultâneas', () => {
+  it('usar e cancelar ao mesmo tempo: só um vale, e o saldo bate com o estado final', async () => {
+    for (let round = 0; round < 3; round++) {
+      const g = await newGuest({ email: `r${round}@exemplo.com`, document: ['111.444.777-35', '390.533.447-05', '168.995.350-09'][round] });
+      await stayDone(g.id, 1000);
+      const reward = await newReward(800);
+      const r = (await post('/redemptions', { guestId: g.id, rewardId: reward.id, requestId: `req-acao-${round}-xx` })).json();
+      await post(`/redemptions/${r.id}/confirm`);
+      const rs = await Promise.all([post(`/redemptions/${r.id}/use`), post(`/redemptions/${r.id}/cancel`)]);
+      const final = (await prisma.redemption.findUniqueOrThrow({ where: { id: r.id } })).status;
+      expect(['USED', 'CANCELLED']).toContain(final);
+      expect(rs.filter((x) => x.statusCode === 200)).toHaveLength(1); // o outro é recusado
+      expect(await ledger(g.id)).toBe(final === 'USED' ? 200 : 1000);
+      expect(await lotsLeft(g.id)).toBe(await ledger(g.id));
+    }
+  });
+
+  it('dois resgates simultâneos consomem os lotes por ordem de vencimento sem passar do saldo de cada lote', async () => {
+    const g = await newGuest();
+    await stayDone(g.id, 1000); // lote A vence primeiro
+    clock = new Date('2026-04-01T12:00:00Z');
+    headers = await loginAs('gerente');
+    await stayDone(g.id, 1000); // lote B
+    const reward = await newReward(800);
+    const rs = await Promise.all(
+      [1, 2].map((i) => post('/redemptions', { guestId: g.id, rewardId: reward.id, requestId: `req-fifo-${i}-xxxx` })),
+    );
+    expect(rs.map((r) => r.statusCode)).toEqual([201, 201]);
+    const lots = await prisma.pointsTransaction.findMany({ where: { guestId: g.id, points: { gt: 0 } }, orderBy: { expiresAt: 'asc' } });
+    expect(lots.map((l) => l.remaining)).toEqual([0, 400]); // o mais antigo foi todo consumido primeiro
+    expect(await ledger(g.id)).toBe(400);
+  });
+});
+
+describe('rotina noturna em corrida', () => {
+  it('duas execuções simultâneas vencem cada lote uma única vez', async () => {
+    const g = await newGuest();
+    await stayDone(g.id, 3500);
+    clock = new Date('2028-03-02T00:00:00Z');
+    const repo = new PrismaMaintenanceRepository(prisma);
+    const rs = await Promise.all([runNightly({ repo, now: () => clock }), runNightly({ repo, now: () => clock })]);
+    expect(rs.every((r) => r.errors === 0)).toBe(true);
+    expect(rs.reduce((n, r) => n + r.expiredPoints, 0)).toBe(3500);
+    expect(await prisma.pointsTransaction.count({ where: { guestId: g.id, idempotencyKey: { startsWith: 'expire:' } } })).toBe(1);
+    expect(await ledger(g.id)).toBe(0);
+  });
+
+  it('cancelar um resgate enquanto o lote vence: nenhum ponto fica sem dono', async () => {
+    const g = await newGuest();
+    await stayDone(g.id, 1000);
+    const reward = await newReward(800);
+    const r = (await post('/redemptions', { guestId: g.id, rewardId: reward.id, requestId: 'req-cancela-noite' })).json();
+    clock = new Date('2028-03-02T00:00:00Z');
+    headers = await loginAs('gerente');
+    const repo = new PrismaMaintenanceRepository(prisma);
+    const [night, cancel] = await Promise.all([runNightly({ repo, now: () => clock }), post(`/redemptions/${r.id}/cancel`)]);
+    expect(night.errors).toBe(0);
+    expect(cancel.statusCode).toBe(200);
+    await runNightly({ repo, now: () => clock }); // a rodada seguinte fecha qualquer sobra
+    expect(await ledger(g.id)).toBe(0);
+    expect(await lotsLeft(g.id)).toBe(0);
+  });
+
+  it('revisão de nível em corrida com check-out: o hóspede termina no nível que os pontos justificam', async () => {
+    const g = await newGuest();
+    await stayDone(g.id, 3500); // Prata até 2027-03-01
+    clock = new Date('2027-03-02T12:00:00Z');
+    headers = await loginAs('gerente');
+    const id = await openStay(g.id, 3500);
+    const repo = new PrismaMaintenanceRepository(prisma);
+    const [night, co] = await Promise.all([runNightly({ repo, now: () => clock }), post(`/stays/${id}/checkout`)]);
+    expect(night.errors).toBe(0);
+    expect(co.statusCode).toBe(200);
+    const end = await prisma.guest.findUniqueOrThrow({ where: { id: g.id }, include: { tier: true } });
+    expect(end.tier.name).toBe('Prata');
+  });
+});
