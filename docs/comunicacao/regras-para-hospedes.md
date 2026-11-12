@@ -47,14 +47,14 @@ Cada ponto vale por 24 meses a partir do dia em que foi ganho. Usamos primeiro o
 
 1. Peça na recepção, no check-in, ou cadastre-se pelo [site/WhatsApp].
 2. Aceite receber nossas novidades (opcional e pode ser cancelado quando quiser).
-3. Pronto: seus pontos entram automaticamente após o check-out.
+3. Pronto: seus pontos entram depois do check-out.
 
 Quem reservou por agências online também pode participar. Basta se cadastrar.
 
 ## Regras importantes
 - Pontos são creditados após o check-out, sobre valores líquidos de impostos [e taxa de serviço].
 - Cancelamentos e no-show não geram pontos. Se um valor for estornado, os pontos correspondentes também são.
-- Estadias anteriores ao cadastro [não pontuam].
+- Estadias anteriores ao cadastro não pontuam.
 - Pontos são pessoais e intransferíveis [a confirmar].
 - O hotel pode alterar o programa com aviso prévio, preservando os pontos já acumulados.
 - Seus dados são tratados conforme a LGPD e usados só para o programa e para comunicações que você autorizou.

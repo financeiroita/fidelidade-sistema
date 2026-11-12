@@ -157,7 +157,9 @@ describe('entrar com código por e-mail', () => {
       for (let i = 0; i < 5; i++) await post('/me/login/verify', { email: ana.email, code: wrongFor(lastCode()) });
     }
     clock = new Date(clock.getTime() + 20 * 60_000);
+    const before = ctx.sent.length;
     await post('/me/login/request', { email: ana.email });
+    expect(ctx.sent).toHaveLength(before); // bloqueado: nem recebe código novo
     expect((await post('/me/login/verify', { email: ana.email, code: lastCode() })).statusCode).toBe(401);
     clock = new Date(clock.getTime() + 24 * 3_600_000);
     await post('/me/login/request', { email: ana.email });
@@ -235,18 +237,41 @@ describe('o que o hóspede vê', () => {
     expect(list[0]).not.toHaveProperty('id');
   });
 
-  it('nível vencido: a página segue a regra da recepção e não promete prêmio restrito (ADR 0014)', async () => {
+  it('nível vencido: página e recepção usam a mesma regra, o que os pontos garantem (ADR 0016)', async () => {
     const g = await signup(ana);
-    await earn(g.id, 9000); // pontos de Ouro
-    await post('/rewards', { name: 'Upgrade de suíte', type: 'UPGRADE', pointsCost: 1000, minTierRank: 2 }, ctx.headers);
-    ctx.stays.tiers.set(g.id, { rank: 2, validUntil: new Date('2026-03-01T00:00:00Z') }); // venceu hoje
+    await earn(g.id, 3500); // pontos-base de Prata
+    const mk = (body: object) => post('/rewards', body, ctx.headers);
+    await mk({ name: 'Jantar Prata', type: 'DINING', pointsCost: 1000, minTierRank: 1 });
+    await mk({ name: 'Upgrade Ouro', type: 'UPGRADE', pointsCost: 1000, minTierRank: 2 });
+    // Ouro com validade vencida e a rotina noturna ainda não rodou: vale Prata (pelos pontos).
+    ctx.stays.tiers.set(g.id, { rank: 2, validUntil: new Date('2026-03-01T00:00:00Z') });
     const token = await signIn(ana.email);
-    const [reward] = (await get('/me/rewards', bearer(token))).json();
-    expect(reward).toMatchObject({ canRedeem: false, tierOk: false });
-    // E a recepção de fato recusa.
-    const [{ id: rewardId }] = (await get('/rewards')).json();
-    const r = await post('/redemptions', { guestId: g.id, rewardId, requestId: 'req-vencido-123' }, ctx.headers);
-    expect(r.json().error).toBe('tier_too_low');
+    const list = (await get('/me/rewards', bearer(token))).json();
+    const by = (n: string) => list.find((r: { name: string }) => r.name === n);
+    expect(by('Jantar Prata')).toMatchObject({ canRedeem: true, tierOk: true });
+    expect(by('Upgrade Ouro')).toMatchObject({ canRedeem: false, tierOk: false });
+    // A recepção decide igual: aceita o de Prata e recusa o de Ouro.
+    const ids = Object.fromEntries((await get('/rewards')).json().map((r: { name: string; id: string }) => [r.name, r.id]));
+    const redeem = (name: string, requestId: string) =>
+      post('/redemptions', { guestId: g.id, rewardId: ids[name], requestId }, ctx.headers);
+    expect((await redeem('Upgrade Ouro', 'req-vencido-ouro-1')).json().error).toBe('tier_too_low');
+    expect((await redeem('Jantar Prata', 'req-vencido-prata-1')).statusCode).toBe(201);
+  });
+
+  it('a data de vencimento mostrada é o último dia em que os pontos valem (ADR 0016)', async () => {
+    const g = await signup(ana);
+    await earn(g.id, 1000); // creditado em 01/03/2026: vale até o fim de 01/03/2028 no hotel
+    const reward = (await post('/rewards', { name: 'Café', type: 'DINING', pointsCost: 500 }, ctx.headers)).json();
+    const token = await signIn(ana.email);
+    expect((await get('/me', bearer(token))).json().expiring).toEqual([{ date: '2028-03-01', points: 1000 }]);
+    // Às 23h de 01/03/2028 em São Paulo (02h UTC do dia 2) o resgate ainda funciona...
+    clock = new Date('2028-03-02T02:00:00Z');
+    const ok = await post('/redemptions', { guestId: g.id, rewardId: reward.id, requestId: 'req-ultimo-dia-1' }, ctx.headers);
+    expect(ok.statusCode).toBe(201);
+    // ...e à 0h de 02/03 no hotel, não mais.
+    clock = new Date('2028-03-02T03:00:00Z');
+    const late = await post('/redemptions', { guestId: g.id, rewardId: reward.id, requestId: 'req-dia-seguinte-1' }, ctx.headers);
+    expect(late.json().error).toBe('insufficient_points');
   });
 
   it('indicado vê os pontos de boas-vindas pendentes; nível mais alto não mostra próximo nível', async () => {

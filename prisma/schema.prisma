@@ -175,7 +175,8 @@ model Campaign {
   pointsTx    PointsTransaction[]
 }
 
-// Razão imutável. Saldo = soma(points) das transações do hóspede.
+// Razão imutável. Saldo disponível = soma de `remaining` dos lotes ainda válidos (ADR 0009);
+// a soma de `points` é o saldo contábil, usado só para conferência.
 model PointsTransaction {
   id             String              @id @default(uuid())
   guestId        String
@@ -308,7 +309,7 @@ model GuestLoginCode {
   codeHash  String
   attempts  Int       @default(0)
   expiresAt DateTime
-  usedAt    DateTime? // usado ou queimado (tentativas esgotadas / código mais novo pedido)
+  usedAt    DateTime? // usado ou queimado (tentativas esgotadas, ou o hóspede entrou com outro código)
   createdAt DateTime
 
   @@index([guestId, createdAt])

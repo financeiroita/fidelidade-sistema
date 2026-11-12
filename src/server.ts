@@ -1,17 +1,23 @@
-import { isIP } from 'node:net';
+import './env';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from './api/app';
 import { PrismaAuditRepository, PrismaAuthRepository } from './infra/prisma/authRepository';
 import type { GuestCodeSender } from './application/ports';
+import { guestCodeDelivery, proxyAddrs, strongSecret, type Checked } from './config/startup';
 import { PrismaGuestPortalRepository } from './infra/prisma/guestPortalRepository';
 import { PrismaGuestRepository } from './infra/prisma/guestRepository';
 import { PrismaRewardRepository } from './infra/prisma/rewardRepository';
 import { PrismaStayRepository } from './infra/prisma/stayRepository';
 import { warmUpPasswordHashing } from './infra/security/password';
 
-// Exige tamanho mínimo e variedade de caracteres (rejeita "aaaa...", "1234...").
-const strongSecret = (v: string | undefined, minLen: number): v is string =>
-  !!v && v.length >= minLen && new Set(v).size >= 12;
+/** Mostra o erro de configuração e encerra. */
+function must<T>(r: Checked<T>): T {
+  if (!r.ok) {
+    console.error(r.error);
+    process.exit(1);
+  }
+  return r.value;
+}
 
 const secret = process.env.DOCUMENT_HASH_SECRET;
 if (!strongSecret(secret, 32)) {
@@ -19,62 +25,16 @@ if (!strongSecret(secret, 32)) {
   process.exit(1);
 }
 
-/** IP (v4/v6) com faixa opcional (/n); recusa "confiar em todos" (prefixo /0). */
-function validProxyAddr(v: string): boolean {
-  const [ip, prefix, extra] = v.split('/');
-  const kind = isIP(ip);
-  if (!kind || extra !== undefined) return false;
-  if (prefix === undefined) return true;
-  if (!/^\d{1,3}$/.test(prefix)) return false;
-  const n = Number(prefix);
-  return n >= 1 && n <= (kind === 4 ? 32 : 128);
-}
-
-function proxyAddrs(): string[] | false {
-  for (const old of ['TRUST_PROXY', 'TRUST_PROXY_HOPS']) {
-    if (process.env[old] !== undefined) {
-      console.error(`${old} foi substituído por TRUST_PROXY_ADDRS (endereços dos seus proxies, ex.: 127.0.0.1). Ver README.`);
-      process.exit(1);
-    }
-  }
-  const v = process.env.TRUST_PROXY_ADDRS?.trim();
-  if (!v) return false;
-  const list = v.split(',').map((s) => s.trim()).filter(Boolean);
-  const bad = list.filter((a) => !validProxyAddr(a));
-  if (bad.length > 0) {
-    console.error(`TRUST_PROXY_ADDRS inválido: ${bad.join(', ')}. Use IPs ou faixas (ex.: 127.0.0.1,10.0.0.0/8).`);
-    process.exit(1);
-  }
-  return list;
-}
-
 /**
  * Envio do código de acesso do hóspede. O provedor de e-mail ainda não foi escolhido pelo hotel
  * (pergunta em aberto); até lá só existe o modo de teste, que mostra o código no terminal.
  */
 function guestCodeSender(): GuestCodeSender | undefined {
-  const mode = process.env.GUEST_CODE_DELIVERY;
-  if (!mode) return undefined; // "Minha conta" fica sem login (503) até configurar
-  if (mode === 'console') {
-    // Só num computador de teste: produção declarada OU banco fora desta máquina = recusa.
-    let dbHost = '';
-    try {
-      dbHost = new URL(process.env.DATABASE_URL ?? '').hostname;
-    } catch {
-      dbHost = '';
-    }
-    const localDb = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(dbHost);
-    if (process.env.NODE_ENV === 'production' || !localDb) {
-      console.error('GUEST_CODE_DELIVERY=console é só para testes (banco nesta máquina, fora de produção).');
-      process.exit(1);
-    }
-    return {
-      // Sem o e-mail no terminal: só o código, para testar a tela.
-      send: async (_to, code) => console.log(`[TESTE] código de acesso do hóspede: ${code}`),
-    };
-  }
-  console.error('GUEST_CODE_DELIVERY inválido. Valores aceitos hoje: console (só para testes).');
-  process.exit(1);
+  if (must(guestCodeDelivery(process.env)) === 'off') return undefined; // login do hóspede responde 503
+  return {
+    // Sem o e-mail no terminal: só o código, para testar a tela.
+    send: async (_to, code) => console.log(`[TESTE] código de acesso do hóspede: ${code}`),
+  };
 }
 
 const prisma = new PrismaClient();
@@ -91,7 +51,8 @@ const app = buildApp(
       stays,
       codeSecret: secret,
       sender: guestCodeSender(),
-      onSendError: (errName) => console.error(JSON.stringify({ at: new Date().toISOString(), event: 'falha-envio-codigo', errName })),
+      onCodeFailure: (guestId) => console.warn(JSON.stringify({ at: new Date().toISOString(), event: 'codigo-hospede-errado', guestId })),
+      onSendError:(errName) => console.error(JSON.stringify({ at: new Date().toISOString(), event: 'falha-envio-codigo', errName })),
     },
     auth: {
       repo: new PrismaAuthRepository(prisma),
@@ -102,7 +63,7 @@ const app = buildApp(
   },
   // TRUST_PROXY_ADDRS = endereços dos proxies/balanceadores SEUS (ex.: 127.0.0.1 se o Nginx está na mesma máquina).
   // Só pedidos vindos deles podem informar o IP do visitante; quem conecta direto não consegue inventar o IP.
-  { logger: true, trustProxy: proxyAddrs() },
+  { logger: true, trustProxy: must(proxyAddrs(process.env)) },
 );
 
 const port = Number(process.env.PORT ?? 3000);

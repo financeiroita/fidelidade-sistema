@@ -55,7 +55,7 @@ describe('vencimento de pontos', () => {
   it('expira o lote vencido uma única vez e zera o saldo', async () => {
     const g = await guest();
     await stayDone(g.id, 1000); // 1.000 pontos, vencem em 2028-03-01
-    clock = new Date('2028-03-02T00:00:00Z');
+    clock = new Date('2028-03-02T03:00:00Z');
     const r1 = await run();
     expect(r1).toMatchObject({ expiredLots: 1, expiredPoints: 1000, errors: 0 });
     expect(ctx.stays.balance(g.id)).toBe(0);
@@ -129,17 +129,17 @@ describe('sessões de login vencidas', () => {
 describe('limites e falhas', () => {
   it('lote que vence exatamente agora expira; 1 ms antes do vencimento, não', async () => {
     const g = await guest();
-    await stayDone(g.id, 1000); // vence em 2028-03-01T12:00:00.000Z
-    clock = new Date('2028-03-01T11:59:59.999Z');
+    await stayDone(g.id, 1000); // vale até o fim de 01/03/2028 no hotel: vence em 2028-03-02T03:00:00.000Z
+    clock = new Date('2028-03-02T02:59:59.999Z');
     expect((await run()).expiredLots).toBe(0);
-    clock = new Date('2028-03-01T12:00:00.000Z');
+    clock = new Date('2028-03-02T03:00:00.000Z');
     expect((await run()).expiredLots).toBe(1);
   });
 
   it('lote com saldo diferente do lido não expira naquela noite e expira certo na seguinte', async () => {
     const g = await guest();
     await stayDone(g.id, 1000);
-    clock = new Date('2028-03-02T00:00:00Z');
+    clock = new Date('2028-03-02T03:00:00Z');
     const lot = ctx.stays.transactions.find((t) => t.type === 'EARN_STAY')!;
     const real = maint.loadActiveLots.bind(maint);
     maint.loadActiveLots = async (until) => {
@@ -165,7 +165,7 @@ describe('limites e falhas', () => {
       })
     ).json();
     await stayDone(b.id, 2000);
-    clock = new Date('2028-03-02T00:00:00Z');
+    clock = new Date('2028-03-02T03:00:00Z');
     const events: Array<{ step: string; id?: string; code: string }> = [];
     const real = maint.expireLot.bind(maint);
     let first = true;

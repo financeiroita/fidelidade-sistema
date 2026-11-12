@@ -9,8 +9,9 @@ _Atualizado: 2026-11-12_
 - Resgate de pontos, catálogo de prêmios, saldo e extrato (ADR 0009).
 - Login por funcionário, papéis (recepção, gerente, administrador) e registro de auditoria (ADR 0010).
 - Área do hóspede "Minha conta" (`/minha-conta`): entrada por código no e-mail, saldo, nível, progresso, vencimentos, extrato e prêmios (ADRs 0013 e 0014). Demonstração sem banco: `npm run demo:minha-conta`.
-- Testes: 157 rápidos (`npm test`, sem banco) e 32 de integração com PostgreSQL de verdade (`npm run test:integration`, versão 18 embutida, sem Docker).
+- Testes: 170 rápidos (`npm test`, sem banco) e 34 de integração com PostgreSQL de verdade (`npm run test:integration`, versão 18 embutida, sem Docker).
 - Correções da revisão geral de 2026-11-12 e da auditoria seguinte (ver ADRs 0011 e 0012).
+- Segunda revisão geral (ADR 0016): pontos valem até o fim do dia do hotel, número da reserva sem diferença de maiúsculas, regra única para nível vencido, `.env` carregado pelo próprio sistema e mais travas de integridade no banco.
 
 ## Pendente técnico
 - Ligar um serviço de e-mail de verdade para o código de acesso da "Minha conta" (depende da pergunta 29).
@@ -25,11 +26,16 @@ _Atualizado: 2026-11-12_
 - Adaptador do Erbon (levantar a API primeiro).
 - CORS restrito ao site do hotel, HTTPS e proteção contra robôs no cadastro.
 - Validar no PostgreSQL 16 do `docker-compose.yml` (os testes rodam no 18).
+- Regra de day use quando as estadias vierem do Erbon (ADR 0012).
+- Limite de requisições e restrição por rede nas rotas internas (ADR 0007); limite por IP agrupando IPv6 por `/64`; tempo limite de transação respondendo 503 (ADR 0016).
+- Lista grande de senhas vazadas na criação de senha de funcionário (ADR 0010).
+- Chave estrangeira em `Redemption.stayId` e preenchimento de `PointsTransaction.createdBy` (ADR 0016).
+- Sem teste automatizado: `web/minha-conta.js`, a calculadora de `programa-fidelidade.html` e os scripts `operator:create`/`operator:unlock`.
+- Antes de publicar as páginas de `docs/comunicacao/`: torná-las páginas completas e tirar as fontes do Google.
 - Publicar no GitHub (`gh auth login`).
 
 ## Proposto, aguardando o hotel
 - Instagram: pontos por marcação do hotel em post, reels ou story, com vínculo da conta e aprovação do marketing (ADR 0015, perguntas 34 a 40). Seguir e curtir não podem pontuar.
-
 - Ideias da pesquisa de programas de resorts (`docs/pesquisa-programas-de-resorts.md`, perguntas 41 a 48): diária grátis por marco de noites, pontos pagando parte da conta, vencimento por inatividade, janela de nível maior, dias do membro, experiências locais, benefício à escolha e tarifa de membro.
 
 ## Pendente do hotel

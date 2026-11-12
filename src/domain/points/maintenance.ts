@@ -1,5 +1,6 @@
 import { loyaltyConfig, type LoyaltyConfig } from '../../config/loyalty';
-import { addMonths, localDate } from '../time';
+import { addMonths } from '../time';
+import { lastValidDay } from './expiry';
 import { resolveTier } from '../tiers/tier';
 
 /** Lote de pontos creditado, ainda com saldo. */
@@ -27,8 +28,8 @@ export interface NoticePlan {
 }
 
 const DAY = 86_400_000;
-/** Dia do vencimento no calendário do hotel (o que o hóspede vai ler no aviso). */
-const hotelDay = (d: Date, timeZone: string) => new Date(`${localDate(d, timeZone)}T00:00:00Z`);
+/** Último dia para usar os pontos, no calendário do hotel (o que o hóspede vai ler no aviso). */
+const hotelDay = (d: Date, timeZone: string) => new Date(`${lastValidDay(d, timeZone)}T00:00:00Z`);
 
 /** Lotes vencidos com saldo: cada um vira um lançamento de expiração. */
 export function planExpirations(lots: LotRow[], now: Date): ExpirationPlan[] {

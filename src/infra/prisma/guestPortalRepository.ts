@@ -16,6 +16,7 @@ export class PrismaGuestPortalRepository implements GuestPortalRepository {
   async issueLoginCode(
     c: { id: string; guestId: string; codeHash: string; expiresAt: Date; now: Date },
     limits: Array<{ since: Date; max: number }>,
+    block: { failuresSince: Date; maxFailures: number },
   ): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
       // Trava o hóspede: pedidos simultâneos não passam do limite.
@@ -25,6 +26,12 @@ export class PrismaGuestPortalRepository implements GuestPortalRepository {
         const recent = await tx.guestLoginCode.count({ where: { guestId: c.guestId, createdAt: { gte: l.since } } });
         if (recent >= l.max) return false;
       }
+      // Bloqueado por erros: não adianta mandar código que não vai funcionar.
+      const failed = await tx.guestLoginCode.aggregate({
+        where: { guestId: c.guestId, createdAt: { gte: block.failuresSince } },
+        _sum: { attempts: true },
+      });
+      if ((failed._sum.attempts ?? 0) >= block.maxFailures) return false;
       await tx.guestLoginCode.create({
         data: { id: c.id, guestId: c.guestId, codeHash: c.codeHash, expiresAt: c.expiresAt, createdAt: c.now },
       });

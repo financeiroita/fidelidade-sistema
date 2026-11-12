@@ -47,9 +47,12 @@ _Feita em 2026-11-12. Pesquisa na internet, com fontes no fim. Os números de ou
 
 ## Recomendações, por ordem
 
-### 1. Fáceis: o sistema já tem quase tudo
+### 1. Mais simples: reaproveitam o que o sistema já tem
+_Correção da revisão de 2026-11-12: os itens 1 e 2 pedem código novo (contagem de noites e prêmio sem custo; resgate de valor variável). São os mais simples da lista, mas não são só configuração._
 1. **Diária grátis por marco de noites** (pergunta 41). Ex.: a cada 20 noites pagas, uma diária grátis, que entra na "Minha conta" como prêmio já liberado. A ideia vem da Sandals (7 noites a cada 70), adaptada a um resort de fim de semana. É fácil de entender e motiva a voltar.
-2. **Pagar parte da conta com pontos** (pergunta 42), como na Palladium. Ex.: 50 pontos = R$ 1, com mínimo de 1.000 pontos, para abater diária, restaurante ou spa no check-out. Isso reaproveita o resgate que já existe (o prêmio do tipo "desconto"). Falta o hotel fixar o valor do ponto (pergunta 4).
+   - Custo: 20 noites × R$ 700 = R$ 14.000 em diárias para uma diária de R$ 700, ou seja, cerca de 5% de retorno. Isso **soma** com os pontos (cerca de 2% no Bronze) e fica acima da referência de 2% do ADR 0003.
+2. **Pagar parte da conta com pontos** (pergunta 42), como na Palladium. Ex.: 50 pontos = R$ 1, com mínimo de 1.000 pontos (R$ 20), para abater diária, restaurante ou spa no check-out. Falta o hotel fixar o valor do ponto (pergunta 4).
+   - Custo: cerca de 2% de volta no Bronze. Com os multiplicadores, 2,5% na Prata, 3% no Ouro e 4% no Diamante, mais o bônus de reserva direta.
 3. **Vencimento por inatividade** (pergunta 43): os pontos só vencem depois de N meses sem estadia, por exemplo 24. É mais simples para o hóspede ("enquanto você voltar, seus pontos não vencem"). Muda a rotina noturna, mas o sistema de lotes continua servindo. Custa mais pontos em aberto para o hotel.
 4. **Janela do nível maior** (pergunta 44): 24 meses em vez de 12, ou nível por **número de estadias ou noites**, como a Sandals. É só configuração e uma revisão das regras.
 

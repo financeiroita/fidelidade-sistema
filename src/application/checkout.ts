@@ -135,7 +135,8 @@ export function planCheckout(
       processedAt: now,
     },
     earned,
-    tier: (upgraded ? reached : tier).name,
+    // Com o nível guardado vencido, vale o que os pontos garantem já contando esta estadia.
+    tier: (expired || upgraded ? reached : storedTier).name,
     // Observação: se o nível guardado está vencido e o hóspede não o mantém, quem rebaixa é a rotina noturna.
     upgraded,
   };

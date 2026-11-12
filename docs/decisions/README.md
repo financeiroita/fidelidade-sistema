@@ -18,8 +18,9 @@ Memória do projeto. Para alterar uma decisão: crie novo ADR e marque o antigo 
 | [0008](0008-rotina-noturna.md) | Rotina noturna: vencimento, nível e avisos | Aceita |
 | [0009](0009-resgate-de-pontos.md) | Resgate de pontos, saldo e extrato | Aceita |
 | [0010](0010-login-de-funcionarios-e-auditoria.md) | Login de funcionários, permissões e auditoria | Aceita |
-| [0011](0011-correcoes-da-revisao-geral.md) | Correções da revisão geral | Aceita (item 8 substituído pelo ADR 0012) |
+| [0011](0011-correcoes-da-revisao-geral.md) | Correções da revisão geral | Aceita (item 8 substituído e item 4 completado pelo ADR 0012) |
 | [0012](0012-proxy-por-endereco-e-correcoes-da-auditoria.md) | Proxy por endereço e correções da auditoria | Aceita |
 | [0013](0013-area-do-hospede.md) | Área do hóspede ("Minha conta") com código por e-mail | Aceita (limites, fontes e modo de teste ajustados pelo ADR 0014) |
-| [0014](0014-correcoes-da-auditoria-da-area-do-hospede.md) | Correções da auditoria da área do hóspede | Aceita |
+| [0014](0014-correcoes-da-auditoria-da-area-do-hospede.md) | Correções da auditoria da área do hóspede | Aceita (item 5 e parte do item 7 substituídos pelo ADR 0016) |
 | [0015](0015-instagram-no-programa.md) | Instagram no programa: pontos por marcação do hotel | Proposta (aguarda o hotel) |
+| [0016](0016-correcoes-da-segunda-revisao-geral.md) | Correções da segunda revisão geral | Aceita |

@@ -131,9 +131,20 @@ export class PrismaStayRepository implements StayRepository {
         });
         if (claimed.count === 0) throw new StayAlreadyProcessedError();
 
-        if (c.transactions.length > 0) {
+        // Bônus para outro hóspede (quem indicou): só se ele ainda estiver ativo agora, dentro da transação.
+        const others = [...new Set(c.transactions.filter((t) => t.guestId !== c.guestId).map((t) => t.guestId))];
+        const activeOthers = others.length
+          ? new Set(
+              (await tx.guest.findMany({ where: { id: { in: others }, deletedAt: null }, select: { id: true } })).map(
+                (g) => g.id,
+              ),
+            )
+          : new Set<string>();
+        const transactions = c.transactions.filter((t) => t.guestId === c.guestId || activeOthers.has(t.guestId));
+
+        if (transactions.length > 0) {
           await tx.pointsTransaction.createMany({
-            data: c.transactions.map((t) => ({
+            data: transactions.map((t) => ({
               guestId: t.guestId,
               type: t.type,
               points: t.points,

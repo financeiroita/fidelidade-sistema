@@ -105,6 +105,38 @@ describe('lançamento sem duplicar e com limites', () => {
     expect((await stay(g.id, room, 'PHONE', { checkIn: '2026-07-13', checkOut: '2026-07-15' })).statusCode).toBe(201);
   });
 
+  it('o número da reserva não diferencia maiúsculas de minúsculas (ADR 0016)', async () => {
+    const g = await signup(ana);
+    expect((await stay(g.id, room, 'PHONE', { externalRef: 'RES-123' })).statusCode).toBe(201);
+    const again = await stay(g.id, room, 'PHONE', { externalRef: 'res-123' });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error).toBe('duplicate_stay');
+    expect([...ctx.stays.stays.values()].map((s) => s.externalRef)).toEqual(['RES-123']);
+  });
+
+  it('estadia cancelada ou no-show não pontua e não bloqueia um novo lançamento do período', async () => {
+    const g = await signup(ana);
+    for (const status of ['CANCELLED', 'NO_SHOW'] as const) {
+      const { id } = (await stay(g.id, room)).json(); // sem número
+      ctx.stays.stays.get(id)!.status = status;
+      const r = await checkout(id);
+      expect(r.statusCode).toBe(409);
+      expect(r.json().error).toBe('stay_not_eligible');
+    }
+    expect(ctx.stays.balance(g.id)).toBe(0);
+    // As duas canceladas não contam como duplicata: o período pode ser lançado de novo.
+    expect((await stay(g.id, room)).statusCode).toBe(201);
+  });
+
+  it('reserva corporativa ou por agência não ganha o bônus de reserva direta', async () => {
+    const g = await signup(ana);
+    let n = 0;
+    for (const channel of ['CORPORATE', 'AGENCY']) {
+      const { id } = (await stay(g.id, room, channel, { externalRef: `CH-${++n}` })).json();
+      expect((await checkout(id)).json().earned).toBe(1000);
+    }
+  });
+
   it('a ordem não importa: lançada sem número e depois com número, a 2ª é recusada (ADR 0012)', async () => {
     const g = await signup(ana);
     expect((await stay(g.id, room)).statusCode).toBe(201);
@@ -175,8 +207,18 @@ describe('concorrência no mesmo hóspede', () => {
     await complete(g.id, [{ category: 'ROOM', amount: 3500 }], 'OTA');
     const first = ctx.stays.tiers.get(g.id)!.validUntil!;
     expect(first.toISOString().startsWith('2027-07-13')).toBe(true);
+    // Simula um nível conquistado há tempos, ainda válido mas perto de vencer.
+    ctx.stays.tiers.set(g.id, { rank: 1, validUntil: new Date('2026-08-01T00:00:00Z') });
     await complete(g.id, [{ category: 'ROOM', amount: 100 }], 'OTA');
     expect(ctx.stays.tiers.get(g.id)!.rank).toBe(1);
+    expect(ctx.stays.tiers.get(g.id)!.validUntil!.toISOString().startsWith('2027-07-13')).toBe(true);
+  });
+
+  it('nível vencido e parcialmente mantido: a resposta mostra o nível que os pontos garantem com esta estadia (ADR 0016)', async () => {
+    const g = await signup(ana);
+    ctx.stays.tiers.set(g.id, { rank: 2, validUntil: new Date('2026-07-01T00:00:00Z') }); // Ouro vencido
+    const r = await complete(g.id, [{ category: 'ROOM', amount: 3500 }], 'OTA'); // chega a Prata
+    expect(r).toMatchObject({ tier: 'Prata', upgraded: false });
   });
 
   it('nível vencido renovado no check-out aparece renovado na resposta (ADR 0012)', async () => {
@@ -207,7 +249,7 @@ describe('hóspede excluído (LGPD)', () => {
     const g = await signup(ana);
     const { id } = (await stay(g.id, room, 'OTA', { externalRef: 'DEL-1' })).json();
     remove(g.id);
-    expect((await stay(g.id, room, 'OTA', { checkIn: '2026-07-01', checkOut: '2026-07-03', externalRef: 'DEL-2' })).statusCode).not.toBe(201);
+    expect((await stay(g.id, room, 'OTA', { checkIn: '2026-07-01', checkOut: '2026-07-03', externalRef: 'DEL-2' })).statusCode).toBe(404);
     const r = await checkout(id);
     expect(r.statusCode).toBe(409);
     expect(r.json().error).toBe('stay_not_eligible');
@@ -246,7 +288,7 @@ describe('check-out e crédito de pontos', () => {
     ]);
     expect(r).toMatchObject({ alreadyProcessed: false, earned: 2920, tier: 'Bronze', upgraded: false });
     expect(ctx.stays.balance(g.id)).toBe(2920);
-    expect(ctx.stays.transactions.every((t) => t.expiresAt?.toISOString().startsWith('2028-07-13'))).toBe(true);
+    expect(ctx.stays.transactions.every((t) => t.expiresAt?.toISOString() === '2028-07-14T03:00:00.000Z')).toBe(true);
   });
 
   it('reserva por OTA não ganha o bônus de reserva direta', async () => {

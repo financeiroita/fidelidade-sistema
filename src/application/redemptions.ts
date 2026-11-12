@@ -1,5 +1,8 @@
 import { randomInt, randomUUID } from 'node:crypto';
+import { loyaltyConfig, type LoyaltyConfig } from '../config/loyalty';
 import { consumeFifo } from '../domain/points/expiry';
+import { addMonths } from '../domain/time';
+import { effectiveTierRank } from '../domain/tiers/tier';
 import type { RedeemInput, RewardInput } from '../domain/rewards/reward';
 import {
   GuestNotFoundError,
@@ -18,6 +21,7 @@ import {
 
 export interface RewardDeps {
   repo: RewardRepository;
+  config?: LoyaltyConfig;
   now?: () => Date;
 }
 
@@ -47,6 +51,7 @@ export async function redeem(
   deps: RewardDeps,
   input: RedeemInput,
 ): Promise<{ redemption: RedemptionRow; replay: boolean }> {
+  const cfg = deps.config ?? loyaltyConfig;
   return deps.repo.inGuestTransaction(input.guestId, async (uow) => {
     // Lido já com o hóspede travado: um lote que venceu durante a espera não é consumido.
     const now = (deps.now ?? (() => new Date()))();
@@ -63,9 +68,13 @@ export async function redeem(
     const reward = await uow.getReward(input.rewardId);
     if (!reward || !reward.active) throw new RewardNotAvailableError();
 
-    // Nível com validade vencida (a rotina noturna ainda não rodou) não abre prêmio restrito.
-    const rank = guest.tierRank > 0 && (!guest.tierValidUntil || guest.tierValidUntil <= now) ? 0 : guest.tierRank;
-    if (rank < reward.minTierRank) throw new TierTooLowError();
+    // Nível com validade vencida (a rotina noturna ainda não rodou): vale o que os pontos-base da
+    // janela garantem, lidos sob a trava. Mesma regra do check-out e da "Minha conta" (ADR 0016).
+    if (reward.minTierRank > 0) {
+      const qualifying = await uow.qualifyingPointsSince(guest.id, addMonths(now, -cfg.tierWindowMonths));
+      const rank = effectiveTierRank(guest.tierRank, guest.tierValidUntil, qualifying, now, cfg);
+      if (rank < reward.minTierRank) throw new TierTooLowError();
+    }
 
     const lots = await uow.loadUsableLots(guest.id, now);
     const available = lots.reduce((s, l) => s + l.remaining, 0);

@@ -72,11 +72,12 @@
         <h2 id="h-progress">Próximo nível</h2>
         <p class="muted" id="progress-text"></p>
         <div class="bar" role="progressbar" aria-labelledby="h-progress" id="progress-bar" aria-valuemin="0" aria-valuemax="100"><i id="progress-fill"></i></div>
-        <p class="note">Contam para o nível os pontos-base dos últimos 12 meses (o valor gasto, sem bônus).</p>
+        <p class="note">Contam para o nível os pontos-base dos últimos <span id="window-months">12</span> meses (o valor gasto, sem bônus).</p>
       </section>
 
       <section class="card" aria-labelledby="h-expiring">
         <h2 id="h-expiring">Pontos a vencer</h2>
+        <p class="muted">Cada data é o último dia para usar os pontos.</p>
         <ul class="rows" id="expiring"></ul>
         <p class="muted" id="expiring-empty" hidden>Nenhum ponto vencendo por enquanto.</p>
       </section>
@@ -110,7 +111,7 @@
 
 <footer>
   <div class="wrap">
-    <p>Seus dados são usados só para o programa. Para pedir acesso, correção ou exclusão, fale com [contato do hotel].</p>
+    <p>Seus dados são usados só para o programa. Para pedir acesso, correção ou exclusão, fale com a recepção do hotel.</p>
   </div>
 </footer>
 </body>

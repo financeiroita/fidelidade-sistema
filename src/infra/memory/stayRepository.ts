@@ -102,6 +102,8 @@ export class InMemoryStayRepository implements StayRepository {
     const keys = new Set(this.transactions.map((t) => t.idempotencyKey));
     if (c.transactions.some((t) => keys.has(t.idempotencyKey))) throw new StayAlreadyProcessedError();
     for (const t of c.transactions) {
+      // Igual ao banco: bônus para quem indicou só se ele ainda estiver ativo na hora de gravar.
+      if (t.guestId !== c.guestId && !this.guests.active(t.guestId)) continue;
       this.transactions.push({ ...t, id: randomUUID(), remaining: t.points, createdAt: c.processedAt });
     }
     s.status = 'CHECKED_OUT';

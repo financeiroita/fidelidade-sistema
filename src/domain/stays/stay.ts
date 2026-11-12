@@ -36,6 +36,8 @@ export const stayInputSchema = z
       .string()
       .trim()
       .regex(/^[A-Za-z0-9._-]{1,60}$/, 'Use letras, números, ponto, hífen ou sublinhado.')
+      // Sempre em maiúsculas: "res-123" e "RES-123" são o mesmo lançamento (ADR 0016).
+      .transform((v) => v.toUpperCase())
       .optional(),
     // Valores líquidos de impostos, em reais com até 2 casas; negativo = estorno.
     charges: z

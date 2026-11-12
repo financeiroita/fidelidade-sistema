@@ -84,6 +84,13 @@ function makeUow(tx: Tx): RewardUow {
       });
       return rows.map((r) => ({ id: r.id, remaining: r.remaining, expiresAt: r.expiresAt as Date }));
     },
+    async qualifyingPointsSince(guestId, since) {
+      const r = await tx.pointsTransaction.aggregate({
+        where: { guestId, createdAt: { gte: since } },
+        _sum: { qualifyingPts: true },
+      });
+      return r._sum.qualifyingPts ?? 0;
+    },
     async createRedemption(r, rewardName, now) {
       await tx.redemption.create({
         data: {
@@ -240,7 +247,8 @@ export class PrismaRewardRepository implements RewardRepository {
   async getStatement(guestId: string, limit: number): Promise<StatementRow[]> {
     const rows = await this.prisma.pointsTransaction.findMany({
       where: { guestId },
-      orderBy: { createdAt: 'desc' },
+      // Desempate pelo id: linhas do mesmo check-out têm a mesma data, e a ordem não pode variar.
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit,
       select: { createdAt: true, type: true, points: true, note: true },
     });

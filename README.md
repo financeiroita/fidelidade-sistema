@@ -60,8 +60,8 @@ Rotas internas exigem `Authorization: Bearer <token>` (token do `POST /auth/logi
 | `POST /guests` | Cadastro do hóspede (corpo: `src/domain/guests/signup.ts`) | público |
 | `GET /rewards` | Catálogo de prêmios ativos | público |
 | `POST /auth/login` | Entrar (devolve o token) | público |
-| `GET /minha-conta` | Página do hóspede (ADR 0013) | público |
-| `POST /me/login/request` | Hóspede pede o código de acesso (responde 202 sempre) | público |
+| `GET /minha-conta` (e `/minha-conta.js`, `/minha-conta.css`) | Página do hóspede (ADR 0013) | público |
+| `POST /me/login/request` | Hóspede pede o código de acesso (responde 202 exista ou não o e-mail) | público |
 | `POST /me/login/verify` | Hóspede troca e-mail + código por um token de hóspede | público |
 | `GET /me`, `GET /me/statement`, `GET /me/rewards` | Resumo, extrato e prêmios do próprio hóspede | hóspede logado |
 | `POST /me/logout` | Hóspede sai | hóspede logado |
@@ -88,12 +88,13 @@ Rotas internas exigem `Authorization: Bearer <token>` (token do `POST /auth/logi
 `npm run job:nightly` vence pontos, revisa níveis, grava os avisos de vencimento e apaga sessões vencidas. Agende uma vez por dia, de madrugada (ver ADR 0008).
 
 ## Configuração (`.env`)
+O servidor e os comandos (`npm run ...`) leem o arquivo `.env` da pasta do projeto ao iniciar. Variáveis já definidas no sistema têm prioridade sobre as do arquivo.
 - `DATABASE_URL`: endereço do banco.
 - `DOCUMENT_HASH_SECRET`: chave do CPF (passo 3).
 - `PORT`: porta da API (padrão 3000).
-- `TRUST_PROXY_ADDRS`: **só** quando o servidor estiver atrás de um proxy ou balanceador **seu** (ex.: Nginx, balanceador da nuvem). É o endereço desse proxy, ou a faixa de endereços dele (ex.: `127.0.0.1` se o Nginx roda na mesma máquina, ou `10.0.0.0/8`), separados por vírgula. Assim a API enxerga o IP real do visitante no limite de tentativas. Só pedidos vindos desses endereços podem informar o IP; quem conecta direto não consegue falsificá-lo. As antigas `TRUST_PROXY` e `TRUST_PROXY_HOPS` não valem mais: o servidor não inicia se encontrar uma delas (ADR 0012).
+- `TRUST_PROXY_ADDRS`: **só** quando o servidor estiver atrás de um proxy ou balanceador **seu** (ex.: Nginx, balanceador da nuvem). É o endereço desse proxy, ou a faixa de endereços dele (ex.: `127.0.0.1` se o Nginx roda na mesma máquina, ou `10.0.0.0/8`), separados por vírgula. Faixas mais largas que `/8` são recusadas. Assim a API enxerga o IP real do visitante no limite de tentativas. Só pedidos vindos desses endereços podem informar o IP; quem conecta direto não consegue falsificá-lo. As antigas `TRUST_PROXY` e `TRUST_PROXY_HOPS` não valem mais: o servidor não inicia se encontrar uma delas (ADR 0012).
 
-- `GUEST_CODE_DELIVERY`: como o código de acesso da "Minha conta" chega ao hóspede. Hoje só existe `console` (o código aparece no terminal; **só para testes**: o servidor recusa com `NODE_ENV=production` ou com o banco fora desta máquina). Sem a variável, o login do hóspede responde 503 até o hotel escolher o serviço de e-mail (pergunta 29).
+- `GUEST_CODE_DELIVERY`: como o código de acesso da "Minha conta" chega ao hóspede. Hoje só existe `console` (o código aparece no terminal; **só para testes**: exige também `NODE_ENV=development` no `.env` e o banco nesta máquina; fora disso o servidor não inicia). Sem a variável, o login do hóspede responde 503 até o hotel escolher o serviço de e-mail (pergunta 29).
 
 ## Erros comuns da API
 | Código | Erro | Quando |

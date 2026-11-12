@@ -4,7 +4,7 @@
 - **Data**: 2026-11-11
 
 ## Decisão
-- **Acaba a chave única compartilhada.** Cada funcionário tem usuário e senha (`POST /auth/login`) e recebe um token de sessão enviado em `Authorization: Bearer <token>`. Rotas públicas: `/health`, `POST /guests`, `GET /rewards`, `POST /auth/login`.
+- **Acaba a chave única compartilhada.** Cada funcionário tem usuário e senha (`POST /auth/login`) e recebe um token de sessão enviado em `Authorization: Bearer <token>`. Rotas públicas: `/health`, `POST /guests`, `GET /rewards`, `POST /auth/login`. (Nota de 2026-11-12: o ADR 0013 acrescentou a página `/minha-conta` e as rotas `/me/login/*`, e criou o login do hóspede, separado deste.)
 - **Senha**: política de 12 a 128 caracteres, com variedade, sem conter o usuário. Guardada só como hash scrypt com sal (32 MB por tentativa). Nunca em claro, nunca em log.
 - **Sessão**: token aleatório de 256 bits; no banco fica só o hash (quem vazar o banco não consegue usar a sessão). Dura 12 horas. Logout, desativação, troca e redefinição de senha encerram sessões.
 - **Proteção contra adivinhação**: 5 senhas erradas seguidas travam a conta por 15 minutos (a contagem é um único UPDATE, sem perder tentativas simultâneas). Usuário inexistente, senha errada, conta travada e conta desativada dão a mesma resposta (401), gastando o mesmo tempo.

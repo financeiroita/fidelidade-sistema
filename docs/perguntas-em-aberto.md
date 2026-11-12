@@ -55,7 +55,11 @@ Decisões que dependem do hotel (diretoria, marketing, jurídico, recepção). E
 | 45 | Tarifa ou desconto de membro no site de reservas? O motor de reservas aceita? | pesquisa de resorts | Não existe | Principal motivo para reservar direto em vez de pelas OTAs |
 | 46 | Benefício à escolha por estadia (late check-out, drink, crédito no spa) escolhido antes da chegada? Quais opções por nível? | pesquisa de resorts, ligada à 10 | Não existe (depende das reservas do Erbon) | Benefício vivido no resort |
 | 47 | "Dias do membro": datas de baixa temporada com desconto ou pontos em dobro só para membros? | pesquisa de resorts, ligada à 5 | Campanhas não implementadas | Ocupação na baixa temporada |
-| 48 | Quais experiências locais (aula de surf, trilha, café na praia, parceiros) podem entrar no catálogo de prêmios? | pesquisa de resorts | Catálogo vazio | Prêmios que o hóspede valoriza mais que desconto |
+| 48 | Quais experiências locais (aula de surf, trilha, café na praia, parceiros) podem entrar no catálogo de prêmios? | pesquisa de resorts | Catálogo vazio | Prêmios que o hóspede valoriza mais que desconto || 49 | Um check-out sem nenhum consumo (ou só de categorias que não pontuam) deve renovar o nível por mais 12 meses? | 0016, ligada à 17 | Sim: qualquer check-out de quem mantém o nível renova a validade | Nível alto mantido sem gastar |
+| 50 | Casal ou família em que mais de um é membro: a mesma conta pode pontuar para os dois? | 0016 | Tecnicamente sim: a checagem de estadia repetida vale só para o mesmo hóspede | Pontos em dobro pela mesma despesa |
+| 51 | Qual o contato do hotel para pedidos da LGPD (acesso, correção, exclusão)? | 0013, ligada à 20 | A "Minha conta" diz "fale com a recepção do hotel" | Canal do titular exigido pela LGPD |
+| 52 | Código de indicação: hoje é parte do nome + 4 caracteres, fácil de adivinhar. Alongar o código ou limitar o uso? | 0006, ligada à 28 | Código curto; as boas-vindas só são pagas após o 1º check-out | Uso do código de um hóspede por quem ele não indicou |
+
 ## Respondidas
 - Stack: TypeScript + PostgreSQL (ADR 0002). Estadias via PMS e manual. Resort de lazer único. PMS Erbon com folio por categoria. Diária média R$ 700. Todos os hóspedes cadastrados entram, inclusive OTA (ADR 0004).
 - **CPF obrigatório** no cadastro; estrangeiro usa passaporte (ADR 0005).

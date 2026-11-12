@@ -2,6 +2,7 @@
 // Agende para rodar uma vez por dia, de madrugada (cron no Linux ou Agendador de Tarefas no Windows):
 //   npm run job:nightly
 // Códigos de saída: 0 = ok, 2 = terminou com erros em alguns itens, 1 = falha geral.
+import '../env';
 import { PrismaClient } from '@prisma/client';
 import { runNightly } from '../application/maintenance';
 import { PrismaMaintenanceRepository } from '../infra/prisma/maintenanceRepository';

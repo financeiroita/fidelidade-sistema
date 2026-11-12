@@ -63,6 +63,9 @@ button.again{margin-top:20px;background:none;border:1px solid var(--line);color:
 }
 </style>
 
+<!-- AVISO INTERNO (não visível ao hóspede): RASCUNHO — ainda não implementado no sistema: bônus de aniversário,
+     envio de avisos de vencimento, e-mail de confirmação do cadastro. O formulário ainda não está ligado à API.
+     Não publicar sem decidir (ver docs/perguntas-em-aberto.md). -->
 <div class="draft">Demonstração do cadastro. Nada é enviado ou salvo nesta página.</div>
 
 <div class="page">
@@ -71,7 +74,7 @@ button.again{margin-top:20px;background:none;border:1px solid var(--line);color:
     <h1>Entre para o programa e comece a ganhar já na próxima estadia.</h1>
     <ul>
       <li><b>1 pt</b><span>a cada R$ 1 em diárias, restaurante e spa</span></li>
-      <li><b>+20%</b><span>de pontos extras ao reservar direto com o hotel</span></li>
+      <li><b>+20%</b><span>sobre os pontos das diárias ao reservar direto com o hotel</span></li>
       <li><b>500</b><span>pontos de presente no mês do seu aniversário</span></li>
       <li><b>1.000</b><span>pontos quando um amigo indicado se hospeda</span></li>
     </ul>
@@ -153,13 +156,13 @@ button.again{margin-top:20px;background:none;border:1px solid var(--line);color:
 
     <div class="done" id="done" role="status" tabindex="-1">
       <h2>Bem-vindo(a) ao programa!</h2>
-      <p class="sub">Cadastro recebido. Enviamos a confirmação para <strong id="d-mail"></strong>.</p>
+      <p class="sub">Cadastro recebido para <strong id="d-mail"></strong>.</p>
       <div class="card">
         <p class="help">Seu código de indicação (exemplo)</p>
         <p class="code" id="d-code"></p>
         <p class="help" style="margin-top:8px">Compartilhe com amigos: quando eles se hospedarem, você ganha 1.000 pontos.</p>
       </div>
-      <p class="sub" style="margin-top:16px">Nível inicial: <strong>Bronze</strong>. Seus pontos entram automaticamente após o check-out.</p>
+      <p class="sub" style="margin-top:16px">Nível inicial: <strong>Bronze</strong>. Seus pontos entram depois do check-out.</p>
       <button class="again" id="again" type="button">Voltar ao formulário</button>
     </div>
   </main>

@@ -1,7 +1,8 @@
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { loyaltyConfig, type LoyaltyConfig } from '../config/loyalty';
+import { lastValidDay } from '../domain/points/expiry';
 import { addMonths, localDate } from '../domain/time';
-import { resolveTier } from '../domain/tiers/tier';
+import { effectiveTierRank } from '../domain/tiers/tier';
 import { hashToken, newSessionToken } from '../infra/security/token';
 import {
   GuestLoginUnavailableError,
@@ -42,6 +43,8 @@ export interface GuestPortalDeps {
   now?: () => Date;
   /** Falha no pedido ou no envio do código (só o tipo do erro; nunca o e-mail). */
   onSendError?: (errName: string) => void;
+  /** Código errado para um hóspede existente (só o id; para registrar e perceber tentativas em série). */
+  onCodeFailure?: (guestId: string) => void;
   /** Recebe a tarefa de segundo plano do pedido de código (os testes esperam por ela). */
   track?: (task: Promise<void>) => void;
 }
@@ -80,6 +83,7 @@ export function requestLoginCode(deps: GuestPortalDeps, email: string): void {
         { since: new Date(now.getTime() - guestLoginPolicy.codeWindowMinutes * MIN), max: guestLoginPolicy.maxCodesPerWindow },
         { since: new Date(now.getTime() - DAY), max: guestLoginPolicy.maxCodesPerDay },
       ],
+      { failuresSince: new Date(now.getTime() - DAY), maxFailures: guestLoginPolicy.maxFailuresPerDay },
     );
     if (!issued) return; // pedidos demais: silencioso
     await sender.send({ email: guest.email, firstName: firstName(guest.fullName) }, code);
@@ -104,7 +108,11 @@ export async function verifyLoginCode(
     maxFailures: guestLoginPolicy.maxFailuresPerDay,
     failuresSince: new Date(now.getTime() - DAY),
   });
-  if (!ok || !guest) throw new InvalidLoginCodeError();
+  if (!ok || !guest) {
+    // Rastro para perceber varredura de códigos: só o id do hóspede, nunca o e-mail.
+    if (guest) deps.onCodeFailure?.(guest.id);
+    throw new InvalidLoginCodeError();
+  }
   const { token, hash } = newSessionToken();
   const expiresAt = new Date(now.getTime() + guestLoginPolicy.sessionHours * 60 * MIN);
   await deps.repo.createGuestSession({ tokenHash: hash, guestId: guest.id, expiresAt, now });
@@ -126,11 +134,6 @@ export async function authenticateGuest(deps: GuestPortalDeps, token: string): P
 
 export const logoutGuest = (deps: GuestPortalDeps, token: string) => deps.repo.deleteGuestSession(hashToken(token));
 
-/** Nível que vale agora: nível guardado vencido (rotina noturna ainda não rodou) vale pelos pontos. */
-function effectiveRank(rank: number, validUntil: Date | null, qualifying: number, now: Date, cfg: LoyaltyConfig) {
-  const expired = rank > 0 && (!validUntil || validUntil <= now);
-  return expired ? resolveTier(qualifying, cfg).rank : rank;
-}
 
 /** Resumo da conta: nível, saldo, progresso para o próximo nível e próximos vencimentos. */
 export async function getGuestSummary(deps: GuestPortalDeps, guestId: string) {
@@ -144,13 +147,17 @@ export async function getGuestSummary(deps: GuestPortalDeps, guestId: string) {
     deps.repo.upcomingExpirations(guestId, now, 30),
   ]);
   if (!balance) throw new GuestNotFoundError();
-  const rank = effectiveRank(account.tierRank, account.tierValidUntil, qualifying, now, cfg);
+  const rank = effectiveTierRank(account.tierRank, account.tierValidUntil, qualifying, now, cfg);
   const tier = cfg.tiers.find((t) => t.rank === rank) ?? cfg.tiers[0];
   const next = cfg.tiers.find((t) => t.rank === rank + 1) ?? null;
   const day = (d: Date) => localDate(d, cfg.timeZone);
   // Junta os lotes que vencem no mesmo dia do hotel e mostra só os 3 próximos dias.
   const byDay = new Map<string, number>();
-  for (const e of expiring) byDay.set(day(e.expiresAt), (byDay.get(day(e.expiresAt)) ?? 0) + e.points);
+  // A data mostrada é o último dia em que os pontos ainda valem ("use até").
+  for (const e of expiring) {
+    const last = lastValidDay(e.expiresAt, cfg.timeZone);
+    byDay.set(last, (byDay.get(last) ?? 0) + e.points);
+  }
   return {
     firstName: firstName(account.fullName),
     memberSince: day(account.memberSince),
@@ -183,11 +190,15 @@ export async function getGuestRewards(deps: GuestPortalDeps, guestId: string) {
   const now = clock(deps);
   const account = await deps.repo.getAccount(guestId);
   if (!account) throw new GuestNotFoundError();
-  const [balance, rewards] = await Promise.all([deps.rewards.getBalance(guestId, now), deps.rewards.listActiveRewards()]);
+  const [balance, qualifying, rewards] = await Promise.all([
+    deps.rewards.getBalance(guestId, now),
+    deps.stays.qualifyingPointsSince(guestId, addMonths(now, -cfg.tierWindowMonths)),
+    deps.rewards.listActiveRewards(),
+  ]);
   const available = balance?.available ?? 0;
-  // Mesma regra do resgate na recepção (redemptions.ts): nível vencido não abre prêmio restrito.
-  // Assim a página nunca diz "disponível" para um prêmio que a recepção recusaria.
-  const rank = account.tierRank > 0 && (!account.tierValidUntil || account.tierValidUntil <= now) ? 0 : account.tierRank;
+  // Mesma regra do resgate na recepção e do check-out (effectiveTierRank, ADR 0016): assim a página
+  // nunca diz "disponível" para um prêmio que a recepção recusaria.
+  const rank = effectiveTierRank(account.tierRank, account.tierValidUntil, qualifying, now, cfg);
   return rewards.map((r) => {
     const tierOk = rank >= r.minTierRank;
     return {

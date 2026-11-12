@@ -165,6 +165,52 @@ describe('banco e restrições', () => {
     await violates('Guest_welcome_nonneg', () =>
       prisma.$executeRaw`UPDATE "Guest" SET "welcomeBonusPending" = -1 WHERE id = ${g.id}`,
     );
+    // Restrições da migração 20261112000004 (ADR 0016).
+    await violates('PointsTransaction_qualifying_nonneg', () =>
+      prisma.$executeRaw`UPDATE "PointsTransaction" SET "qualifyingPts" = -1 WHERE id = ${lot.id}`,
+    );
+    await violates('PointsTransaction_lot_has_expiry', () =>
+      prisma.$executeRaw`UPDATE "PointsTransaction" SET "expiresAt" = NULL WHERE id = ${lot.id}`,
+    );
+    await violates('Reward_cost_positive', () =>
+      prisma.$executeRaw`UPDATE "Reward" SET "pointsCost" = 0 WHERE id = ${reward.id}`,
+    );
+    await violates('Reward_min_tier_nonneg', () =>
+      prisma.$executeRaw`UPDATE "Reward" SET "minTierRank" = -1 WHERE id = ${reward.id}`,
+    );
+    await violates('Stay_dates_in_order', () =>
+      prisma.$executeRaw`UPDATE "Stay" SET "checkOut" = "checkIn" - 1 WHERE "guestId" = ${g.id}`,
+    );
+    await violates('Stay_nights_nonneg', () => prisma.$executeRaw`UPDATE "Stay" SET "nights" = -1 WHERE "guestId" = ${g.id}`);
+    await violates('Operator_failed_attempts_nonneg', () => prisma.$executeRaw`UPDATE "Operator" SET "failedAttempts" = -1`);
+    await violates('ExpiryNotice_points_positive', () =>
+      prisma.$executeRaw`INSERT INTO "ExpiryNotice" (id, "guestId", "windowDays", points, "expiresOn") VALUES ('n-zero', ${g.id}, 30, 0, '2028-03-01')`,
+    );
+    await violates('GuestSession_expires_after_creation', () =>
+      prisma.$executeRaw`INSERT INTO "GuestSession" (id, "tokenHash", "guestId", "expiresAt", "createdAt") VALUES ('s-ruim', 'hash-ruim', ${g.id}, '2026-01-01', '2026-01-02')`,
+    );
+  });
+
+  it('número da reserva em maiúsculas ou minúsculas é o mesmo lançamento (ADR 0016)', async () => {
+    const g = await newGuest();
+    const body = { guestId: g.id, channel: 'PHONE', checkIn: '2026-02-27', checkOut: '2026-03-01', charges: [{ category: 'ROOM', amount: 1000 }] };
+    const rs = await Promise.all([post('/stays', { ...body, externalRef: 'RES-9' }), post('/stays', { ...body, externalRef: 'res-9' })]);
+    expect(rs.map((r) => r.statusCode).sort()).toEqual([201, 409]);
+    expect(await prisma.stay.count({ where: { guestId: g.id } })).toBe(1);
+  });
+
+  it('quem indicou e foi excluído depois da leitura do check-out não recebe o bônus (ADR 0016)', async () => {
+    const a = (await post('/guests', { ...ana }, {})).json() as { id: string; referralCode: string };
+    const b = await newGuest({ email: 'indicado@exemplo.com', document: '111.444.777-35', referralCode: a.referralCode });
+    const id = await openStay(b.id, 1000);
+    const repo = new PrismaStayRepository(prisma);
+    const data = await repo.loadCheckout(id);
+    expect(data?.guest.referrerActive).toBe(true);
+    await prisma.guest.update({ where: { id: a.id }, data: { deletedAt: new Date() } });
+    const stale = Object.assign(Object.create(repo) as PrismaStayRepository, { loadCheckout: async () => data });
+    await processCheckout({ stays: stale, now: () => clock }, id);
+    expect(await ledger(a.id)).toBe(0);
+    expect(await ledger(b.id)).toBe(1500); // 1.000 da estadia + 500 de boas-vindas
   });
 
   it('CPF repetido é recusado pelo índice único (P2002), inclusive em cadastros simultâneos', async () => {
@@ -253,7 +299,7 @@ describe('resgates e concorrência', () => {
     await stayDone(g.id, 1000);
     const reward = await newReward(800);
     const r = (await post('/redemptions', { guestId: g.id, rewardId: reward.id, requestId: 'req-vencido-1' })).json();
-    clock = new Date('2028-03-02T00:00:00Z'); // o lote de 1.000 já venceu
+    clock = new Date('2028-03-02T03:00:00Z'); // o lote de 1.000 já venceu
     headers = await loginAs('gerente'); // a sessão de 12 h também venceu
     const night = await runNightly({ repo: new PrismaMaintenanceRepository(prisma), now: () => clock });
     expect(night.errors).toBe(0);
@@ -278,7 +324,7 @@ describe('rotina noturna', () => {
     expect(await prisma.session.count()).toBe(0);
     expect((await runNightly({ repo, now: () => clock })).noticesCreated).toBe(0);
 
-    clock = new Date('2028-03-02T00:00:00Z');
+    clock = new Date('2028-03-02T03:00:00Z');
     const n2 = await runNightly({ repo, now: () => clock });
     expect(n2).toMatchObject({ expiredLots: 1, expiredPoints: 3500, errors: 0 });
     expect(await ledger(g.id)).toBe(0);
@@ -291,7 +337,7 @@ describe('rotina noturna', () => {
     const g = await newGuest();
     await stayDone(g.id, 1000);
     const reward = await newReward(800);
-    clock = new Date('2028-03-02T00:00:00Z');
+    clock = new Date('2028-03-02T03:00:00Z');
     headers = await loginAs('gerente');
     const repo = new PrismaMaintenanceRepository(prisma);
     const [night, red] = await Promise.all([
@@ -441,7 +487,7 @@ describe('rotina noturna em corrida', () => {
   it('duas execuções simultâneas vencem cada lote uma única vez', async () => {
     const g = await newGuest();
     await stayDone(g.id, 3500);
-    clock = new Date('2028-03-02T00:00:00Z');
+    clock = new Date('2028-03-02T03:00:00Z');
     const repo = new PrismaMaintenanceRepository(prisma);
     const rs = await Promise.all([runNightly({ repo, now: () => clock }), runNightly({ repo, now: () => clock })]);
     expect(rs.every((r) => r.errors === 0)).toBe(true);
@@ -455,7 +501,7 @@ describe('rotina noturna em corrida', () => {
     await stayDone(g.id, 1000);
     const reward = await newReward(800);
     const r = (await post('/redemptions', { guestId: g.id, rewardId: reward.id, requestId: 'req-cancela-noite' })).json();
-    clock = new Date('2028-03-02T00:00:00Z');
+    clock = new Date('2028-03-02T03:00:00Z');
     headers = await loginAs('gerente');
     const repo = new PrismaMaintenanceRepository(prisma);
     const [night, cancel] = await Promise.all([runNightly({ repo, now: () => clock }), post(`/redemptions/${r.id}/cancel`)]);

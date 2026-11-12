@@ -199,6 +199,8 @@ export interface RewardUow {
   getRedemption(id: string): Promise<RedemptionRow | null>;
   /** Lotes com saldo e ainda dentro da validade. */
   loadUsableLots(guestId: string, now: Date): Promise<Lot[]>;
+  /** Pontos-base creditados desde a data (janela do nível), lidos sob a trava do hóspede. */
+  qualifyingPointsSince(guestId: string, since: Date): Promise<number>;
   /** Grava o resgate (PENDING), abate os lotes e lança o débito REDEEM no extrato. */
   createRedemption(r: NewRedemption, rewardName: string, now: Date): Promise<void>;
   setStatus(id: string, status: RedemptionStatus, extra?: { stayId?: string; usedAt?: Date }): Promise<void>;
@@ -281,6 +283,8 @@ export interface GuestPortalRepository {
   issueLoginCode(
     c: { id: string; guestId: string; codeHash: string; expiresAt: Date; now: Date },
     limits: Array<{ since: Date; max: number }>,
+    /** Hóspede bloqueado por erros (soma de tentativas desde `failuresSince`) não recebe código novo. */
+    block: { failuresSince: Date; maxFailures: number },
   ): Promise<boolean>;
   /**
    * Confere o código contra os códigos válidos do hóspede. Recusa tudo se os erros somados desde

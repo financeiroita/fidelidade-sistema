@@ -1,6 +1,7 @@
 // Cria um funcionário com login (o primeiro deve ser ADMIN). A senha é pedida no terminal,
 // sem aparecer na tela nem ficar no histórico de comandos:
 //   npm run operator:create -- --username maria --name "Maria Souza" --role ADMIN
+import '../env';
 import { PrismaClient } from '@prisma/client';
 import { createOperator } from '../application/auth';
 import { DuplicateOperatorError, WeakPasswordError } from '../application/ports';

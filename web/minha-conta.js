@@ -133,6 +133,7 @@
     $('ref-code').textContent = s.referralCode;
 
     var p = s.progress;
+    $('window-months').textContent = String(p.windowMonths);
     var pct;
     if (p.nextTier) {
       var span = p.nextTier.minQualifyingPts - p.currentMin;
@@ -142,7 +143,7 @@
         : 'Você já alcançou o nível ' + p.nextTier.name + '. Ele passa a valer na próxima estadia.';
     } else {
       pct = 100;
-      $('progress-text').textContent = 'Você está no nível mais alto. Mantenha ' + fmtPts(p.currentMin) + ' pontos-base em 12 meses para continuar nele.';
+      $('progress-text').textContent = 'Você está no nível mais alto. Mantenha ' + fmtPts(p.currentMin) + ' pontos-base em ' + p.windowMonths + ' meses para continuar nele.';
     }
     $('progress-fill').style.width = pct.toFixed(1) + '%';
     $('progress-bar').setAttribute('aria-valuenow', String(Math.round(pct)));
@@ -151,7 +152,7 @@
     ul.textContent = '';
     s.expiring.forEach(function (e) {
       var li = el('li');
-      li.appendChild(el('span', 'what', 'Vencem em ' + fmtDay(e.date)));
+      li.appendChild(el('span', 'what', 'Use até ' + fmtDay(e.date)));
       li.appendChild(el('span', 'pts', fmtPts(e.points)));
       ul.appendChild(li);
     });

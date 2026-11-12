@@ -121,7 +121,7 @@ describe('resgate', () => {
   it('pontos vencidos (a rotina ainda não rodou) não contam como saldo', async () => {
     const g = await newGuest();
     await earn(g.id, 1000);
-    clock = new Date('2028-03-02T00:00:00Z');
+    clock = new Date('2028-03-02T03:00:00Z');
     const reward = await newReward({ pointsCost: 500 });
     expect((await redeem(g.id, reward.id)).json()).toEqual({ error: 'insufficient_points', available: 0 });
     expect(await balance(g.id)).toMatchObject({ available: 0, ledger: 1000 });
@@ -276,7 +276,7 @@ describe('ciclo do resgate', () => {
     await earn(g.id, 1000); // vence 2028-03-01
     const reward = await newReward({ pointsCost: 400 });
     const r = (await redeem(g.id, reward.id)).json(); // lote fica com 600
-    clock = new Date('2028-03-02T00:00:00Z');
+    clock = new Date('2028-03-02T03:00:00Z');
     const maint = new InMemoryMaintenanceRepository(ctx.stays, ctx.guests, () => clock);
     expect(await runNightly({ repo: maint, now: () => clock })).toMatchObject({ expiredLots: 1, expiredPoints: 600 });
     await post(`/redemptions/${r.id}/cancel`);

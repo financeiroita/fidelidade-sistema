@@ -31,8 +31,13 @@ export class InMemoryGuestPortalRepository implements GuestPortalRepository {
   async issueLoginCode(
     c: { id: string; guestId: string; codeHash: string; expiresAt: Date; now: Date },
     limits: Array<{ since: Date; max: number }>,
+    block: { failuresSince: Date; maxFailures: number },
   ) {
     if (!this.guests.active(c.guestId)) return false;
+    const failed = this.codes
+      .filter((x) => x.guestId === c.guestId && x.createdAt >= block.failuresSince)
+      .reduce((s, x) => s + x.attempts, 0);
+    if (failed >= block.maxFailures) return false;
     for (const l of limits) {
       if (this.codes.filter((x) => x.guestId === c.guestId && x.createdAt >= l.since).length >= l.max) return false;
     }

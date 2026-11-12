@@ -97,6 +97,7 @@ export class InMemoryRewardRepository implements RewardRepository {
         txs
           .filter((t) => t.guestId === guestId && t.remaining > 0 && t.expiresAt && t.expiresAt > now)
           .map((t) => ({ id: t.id, remaining: t.remaining, expiresAt: t.expiresAt as Date })),
+      qualifyingPointsSince: (guestId, since) => this.stays.qualifyingPointsSince(guestId, since),
       createRedemption: async (r, rewardName, now) => {
         // Valida tudo antes de gravar: a memória não desfaz escritas parciais como o banco.
         for (const l of r.lots) {
@@ -115,7 +116,7 @@ export class InMemoryRewardRepository implements RewardRepository {
           redemptionId: r.id,
           idempotencyKey: `redeem:${r.id}`,
           note: `Resgate: ${rewardName}`,
-          createdAt: this.clock(),
+          createdAt: now, // relógio do caso de uso, igual ao banco
         });
       },
       setStatus: async (id, status, extra) => {
@@ -139,7 +140,7 @@ export class InMemoryRewardRepository implements RewardRepository {
           redemptionId: r.id,
           idempotencyKey: `redeem-cancel:${r.id}`,
           note: 'Resgate cancelado: pontos devolvidos',
-          createdAt: this.clock(),
+          createdAt: now, // relógio do caso de uso, igual ao banco
         });
         for (const l of lapsed) {
           txs.push({
@@ -152,7 +153,7 @@ export class InMemoryRewardRepository implements RewardRepository {
             redemptionId: r.id,
             idempotencyKey: `redeem-cancel-expire:${r.id}:${l.lotId}`,
             note: 'Pontos vencidos (resgate cancelado após o vencimento)',
-            createdAt: this.clock(),
+            createdAt: now, // relógio do caso de uso, igual ao banco
           });
         }
         this.redemptions.set(r.id, { ...r, status: 'CANCELLED' });

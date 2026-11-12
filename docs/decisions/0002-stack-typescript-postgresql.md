@@ -10,6 +10,7 @@ CRM + fidelidade para um hotel/resort de lazer único. Estadias virão de um PMS
 - TypeScript (Node LTS), PostgreSQL, Prisma (ORM/migrações), Vitest (testes), Docker Compose para o banco local.
 - Regras de negócio como **funções puras** em `src/domain/` (sem acesso a banco), para serem testáveis e auditáveis.
 - Razão de pontos (*ledger*) imutável: saldo = soma das transações; nunca editar, só estornar.
+  - Nota (2026-11-12): o saldo **utilizável** passou a ser a soma do que resta nos lotes ainda válidos (ADR 0009); a soma das transações é só o saldo contábil.
 - Hotel único agora; sem `propertyId` nas tabelas (adicionar via novo ADR se virar rede).
 - Estadias têm `source` (PMS ou MANUAL) e `pmsReservationId` único para importação idempotente.
 

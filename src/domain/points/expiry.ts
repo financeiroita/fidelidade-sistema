@@ -1,5 +1,5 @@
 import { LoyaltyConfig } from '../../config/loyalty';
-import { addMonths } from '../time';
+import { addDays, addMonths, localDate, startOfLocalDay } from '../time';
 
 export interface Lot {
   id: string;
@@ -11,8 +11,18 @@ export interface Consumption {
   points: number;
 }
 
+/**
+ * Os pontos valem até o FIM do dia do hotel em que completam a validade (ADR 0016): o vencimento
+ * é o início do dia seguinte no fuso do hotel. Assim "vencem em 12/11" significa "use até 12/11".
+ */
 export function expirationDate(creditedAt: Date, cfg: LoyaltyConfig): Date {
-  return addMonths(creditedAt, cfg.expirationMonths);
+  const lastDay = localDate(addMonths(creditedAt, cfg.expirationMonths), cfg.timeZone);
+  return startOfLocalDay(addDays(lastDay, 1), cfg.timeZone);
+}
+
+/** Último dia (AAAA-MM-DD, no fuso do hotel) em que o lote ainda pode ser usado: o que o hóspede lê. */
+export function lastValidDay(expiresAt: Date, timeZone: string): string {
+  return localDate(new Date(expiresAt.getTime() - 1), timeZone);
 }
 
 /** Consome pontos FIFO pelo vencimento mais próximo. Lança erro se saldo insuficiente. */

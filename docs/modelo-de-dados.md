@@ -28,7 +28,7 @@ erDiagram
 | `Tier` | Níveis (Bronze, Prata, Ouro, Diamante), limiar e multiplicador |
 | `Guest` | Hóspede cadastrado; nível, validade do nível, indicação, consentimentos |
 | `Stay` / `StayCharge` | Estadia e folio por categoria (diária, A&B, spa, eventos, outros) |
-| `PointsTransaction` | Razão de pontos; créditos são lotes com `remaining` e `expiresAt` |
+| `PointsTransaction` | Razão de pontos; créditos são lotes com `remaining` e `expiresAt` (os pontos valem até o fim do dia do hotel, ADR 0016) |
 | `Reward` / `Redemption` | Catálogo de prêmios e resgates (PENDING → CONFIRMED → USED, ou CANCELLED) |
 | `RedemptionLot` | De quais lotes saíram os pontos de cada resgate (para devolver ao cancelar) (ADR 0009) |
 | `ExpiryNotice` | Fila de avisos de pontos a vencer (90 e 30 dias); a rotina noturna grava, o envio ainda não existe (ADR 0008) |

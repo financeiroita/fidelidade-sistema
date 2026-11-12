@@ -2,6 +2,7 @@
 // Use se a conta do administrador for desativada ou travada e ninguém mais conseguir entrar:
 //   npm run operator:unlock -- --username maria
 // Para trocar a senha depois, entre com outro administrador ou crie um novo administrador.
+import '../env';
 import { PrismaClient } from '@prisma/client';
 import { usernameSchema } from '../domain/auth/auth';
 

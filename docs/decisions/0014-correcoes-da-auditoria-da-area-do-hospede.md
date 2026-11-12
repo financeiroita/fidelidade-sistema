@@ -1,8 +1,9 @@
 # 0014. Correções da auditoria da área do hóspede
 
-- Status: Aceita
+- Status: Aceita (item 5 e parte do item 7 substituídos pelo ADR 0016)
 - Data: 2026-11-12
 - Substitui: partes dos itens 1, 2, 4 e 7 do ADR 0013 (indicadas abaixo)
+- Nota (2026-11-12): as fontes do Google estavam no item 6 do ADR 0013, não no item 1; leia "itens 2, 4, 6 e 7".
 
 ## Contexto
 O auditor revisou o commit da "Minha conta" (ADR 0013). Não achou falha de gravidade alta. Os problemas de gravidade média foram estes:
