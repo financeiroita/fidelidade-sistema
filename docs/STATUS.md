@@ -27,5 +27,8 @@ _Atualizado: 2026-11-12_
 - Validar no PostgreSQL 16 do `docker-compose.yml` (os testes rodam no 18).
 - Publicar no GitHub (`gh auth login`).
 
+## Proposto, aguardando o hotel
+- Instagram: pontos por marcação do hotel em post, reels ou story, com vínculo da conta e aprovação do marketing (ADR 0015, perguntas 34 a 40). Seguir e curtir não podem pontuar.
+
 ## Pendente do hotel
 Todas as decisões que dependem do hotel estão em `docs/perguntas-em-aberto.md`.

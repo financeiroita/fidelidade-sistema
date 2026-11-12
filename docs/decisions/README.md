@@ -22,3 +22,4 @@ Memória do projeto. Para alterar uma decisão: crie novo ADR e marque o antigo 
 | [0012](0012-proxy-por-endereco-e-correcoes-da-auditoria.md) | Proxy por endereço e correções da auditoria | Aceita |
 | [0013](0013-area-do-hospede.md) | Área do hóspede ("Minha conta") com código por e-mail | Aceita (limites, fontes e modo de teste ajustados pelo ADR 0014) |
 | [0014](0014-correcoes-da-auditoria-da-area-do-hospede.md) | Correções da auditoria da área do hóspede | Aceita |
+| [0015](0015-instagram-no-programa.md) | Instagram no programa: pontos por marcação do hotel | Proposta (aguarda o hotel) |

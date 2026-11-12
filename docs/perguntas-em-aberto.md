@@ -41,6 +41,13 @@ Decisões que dependem do hotel (diretoria, marketing, jurídico, recepção). E
 | 31 | O hóspede pode pedir o resgate pela internet, ou só na recepção? | 0013 | Só na recepção; a página mostra o que já dá para resgatar | Conveniência x controle |
 | 32 | Por quanto tempo o hóspede fica logado? | 0013 | 24 horas, só na aba aberta | Conveniência x segurança em celular compartilhado |
 | 33 | Depois de 10 códigos errados num dia, o acesso pela internet fica bloqueado por 24 h. A recepção deve poder liberar antes? | 0014 | Não: só passando as 24 h | Hóspede bloqueado por terceiros x segurança |
+| 34 | Instagram: quantos pontos vale uma marcação do hotel (post, reels ou story)? Valores diferentes por formato? | 0015 | Sugestão: 200 pontos; nada implementado | Custo do programa x divulgação |
+| 35 | Instagram: teto de marcações pontuadas por estadia ou por mês? | 0015 | Sugestão: 1 por estadia | Abuso e custo |
+| 36 | Instagram: até quantos dias depois do check-out a marcação ainda pontua? | 0015 | Sugestão: 30 dias | Quem não se hospedou não deve pontuar |
+| 37 | Instagram: quem no marketing aprova as marcações antes do crédito? Precisa de um papel de acesso novo? | 0015 | Sem papel; sugestão: papel "Marketing" só com a fila de aprovação | Controle e separação de funções |
+| 38 | Instagram: haverá sorteios por comentário (com regulamento próprio)? | 0015, ligada à 5 | Não; comentários não pontuam | Engajamento x spam e regras da Meta |
+| 39 | Instagram: a conta do hotel já é profissional e ligada a uma página do Facebook? Quem cadastra o aplicativo na Meta e faz a verificação da empresa? | 0015 | Indefinido | Sem isso a integração não começa (revisão da Meta leva semanas) |
+| 40 | Instagram: o jurídico aprova o texto da autorização LGPD e a regra no regulamento (inclusive que seguir/curtir **não** pontuam)? | 0015 | Indefinido | LGPD e promessa ao hóspede |
 
 ## Respondidas
 - Stack: TypeScript + PostgreSQL (ADR 0002). Estadias via PMS e manual. Resort de lazer único. PMS Erbon com folio por categoria. Diária média R$ 700. Todos os hóspedes cadastrados entram, inclusive OTA (ADR 0004).
