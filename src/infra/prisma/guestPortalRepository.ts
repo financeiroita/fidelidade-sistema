@@ -15,16 +15,16 @@ export class PrismaGuestPortalRepository implements GuestPortalRepository {
 
   async issueLoginCode(
     c: { id: string; guestId: string; codeHash: string; expiresAt: Date; now: Date },
-    limit: { since: Date; max: number },
+    limits: Array<{ since: Date; max: number }>,
   ): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
       // Trava o hóspede: pedidos simultâneos não passam do limite.
       const rows = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "Guest" WHERE id = ${c.guestId} AND "deletedAt" IS NULL FOR UPDATE`;
       if (rows.length === 0) return false;
-      const recent = await tx.guestLoginCode.count({ where: { guestId: c.guestId, createdAt: { gte: limit.since } } });
-      if (recent >= limit.max) return false;
-      // Só o código mais novo vale.
-      await tx.guestLoginCode.updateMany({ where: { guestId: c.guestId, usedAt: null }, data: { usedAt: c.now } });
+      for (const l of limits) {
+        const recent = await tx.guestLoginCode.count({ where: { guestId: c.guestId, createdAt: { gte: l.since } } });
+        if (recent >= l.max) return false;
+      }
       await tx.guestLoginCode.create({
         data: { id: c.id, guestId: c.guestId, codeHash: c.codeHash, expiresAt: c.expiresAt, createdAt: c.now },
       });
@@ -32,23 +32,34 @@ export class PrismaGuestPortalRepository implements GuestPortalRepository {
     });
   }
 
-  async verifyLoginCode(guestId: string, codeHash: string, now: Date, maxAttempts: number): Promise<boolean> {
+  async verifyLoginCode(
+    guestId: string,
+    codeHash: string,
+    now: Date,
+    policy: { maxAttemptsPerCode: number; maxFailures: number; failuresSince: Date },
+  ): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
-      // Trava o código: tentativas simultâneas são contadas uma a uma.
-      const rows = await tx.$queryRaw<Array<{ id: string; codeHash: string; attempts: number }>>`
-        SELECT id, "codeHash", attempts FROM "GuestLoginCode"
-        WHERE "guestId" = ${guestId} AND "usedAt" IS NULL AND "expiresAt" > ${now}
-        ORDER BY "createdAt" DESC LIMIT 1 FOR UPDATE`;
-      const code = rows[0];
-      if (!code) return false;
-      if (sameHash(code.codeHash, codeHash)) {
-        await tx.guestLoginCode.update({ where: { id: code.id }, data: { usedAt: now } });
+      // Trava os códigos do hóspede (24 h): tentativas simultâneas são contadas uma a uma.
+      const rows = await tx.$queryRaw<
+        Array<{ id: string; codeHash: string; attempts: number; usedAt: Date | null; expiresAt: Date }>
+      >`SELECT id, "codeHash", attempts, "usedAt", "expiresAt" FROM "GuestLoginCode"
+        WHERE "guestId" = ${guestId} AND "createdAt" >= ${policy.failuresSince}
+        ORDER BY "createdAt" DESC FOR UPDATE`;
+      const failures = rows.reduce((s, r) => s + r.attempts, 0);
+      if (failures >= policy.maxFailures) return false; // bloqueado até completar 24 h
+      const valid = rows.filter((r) => r.usedAt === null && r.expiresAt > now);
+      if (valid.length === 0) return false;
+      // Compara com todos (sem parar no primeiro), em tempo constante.
+      const match = valid.map((r) => sameHash(r.codeHash, codeHash)).includes(true);
+      if (match) {
+        await tx.guestLoginCode.updateMany({ where: { id: { in: valid.map((r) => r.id) } }, data: { usedAt: now } });
         return true;
       }
-      const attempts = code.attempts + 1;
+      const newest = valid[0];
+      const attempts = newest.attempts + 1;
       await tx.guestLoginCode.update({
-        where: { id: code.id },
-        data: { attempts, usedAt: attempts >= maxAttempts ? now : null },
+        where: { id: newest.id },
+        data: { attempts, usedAt: attempts >= policy.maxAttemptsPerCode ? now : null },
       });
       return false;
     });

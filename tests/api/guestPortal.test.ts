@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/api/app';
+import { runNightly } from '../../src/application/maintenance';
+import { InMemoryMaintenanceRepository } from '../../src/infra/memory/maintenanceRepository';
 import { InMemoryAuditRepository, InMemoryAuthRepository } from '../../src/infra/memory/authRepository';
 import { InMemoryGuestPortalRepository } from '../../src/infra/memory/guestPortalRepository';
 import { InMemoryGuestRepository } from '../../src/infra/memory/guestRepository';
@@ -22,8 +24,11 @@ let clock: Date;
 let ctx: ReturnType<typeof makeApp>;
 let seq = 0;
 
-const post = (url: string, payload?: object, headers: Record<string, string> = {}) =>
-  ctx.app.inject({ method: 'POST', url, payload: payload as object, headers });
+const post = async (url: string, payload?: object, headers: Record<string, string> = {}) => {
+  const r = await ctx.app.inject({ method: 'POST', url, payload: payload as object, headers });
+  if (url === '/me/login/request') await ctx.flush(); // o pedido segue em segundo plano
+  return r;
+};
 const get = (url: string, headers: Record<string, string> = {}) => ctx.app.inject({ method: 'GET', url, headers });
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 
@@ -119,16 +124,44 @@ describe('entrar com código por e-mail', () => {
     expect((await post('/me/login/verify', { email: ana.email, code: fresh })).statusCode).toBe(401);
   });
 
-  it('só o código mais novo vale, e no máximo 3 pedidos a cada 15 minutos', async () => {
+  it('no máximo 3 pedidos a cada 15 minutos e 10 por dia', async () => {
     await signup(ana);
     for (let i = 0; i < 4; i++) expect((await post('/me/login/request', { email: ana.email })).statusCode).toBe(202);
     expect(ctx.sent).toHaveLength(3); // o 4º pedido é ignorado sem avisar
-    const [first, , third] = ctx.sent.map((s) => s.code);
-    if (first !== third) expect((await post('/me/login/verify', { email: ana.email, code: first })).statusCode).toBe(401);
-    expect((await post('/me/login/verify', { email: ana.email, code: third })).statusCode).toBe(200);
-    clock = new Date(clock.getTime() + 15 * 60_000 + 1);
+    for (let i = 0; i < 6; i++) {
+      clock = new Date(clock.getTime() + 15 * 60_000 + 1);
+      await post('/me/login/request', { email: ana.email });
+      await post('/me/login/request', { email: ana.email });
+    }
+    expect(ctx.sent).toHaveLength(10); // teto do dia
+    clock = new Date(clock.getTime() + 24 * 3_600_000);
     await post('/me/login/request', { email: ana.email });
-    expect(ctx.sent).toHaveLength(4);
+    expect(ctx.sent).toHaveLength(11);
+  });
+
+  it('pedir de novo (ou outra pessoa pedir) não invalida o código que o hóspede já recebeu (ADR 0014)', async () => {
+    await signup(ana);
+    await post('/me/login/request', { email: ana.email });
+    const mine = lastCode();
+    await post('/me/login/request', { email: ana.email }); // ex.: alguém pedindo o código da Ana
+    expect((await post('/me/login/verify', { email: ana.email, code: mine })).statusCode).toBe(200);
+    // Depois de entrar, os outros códigos daquele momento deixam de valer.
+    expect((await post('/me/login/verify', { email: ana.email, code: lastCode() })).statusCode).toBe(401);
+  });
+
+  it('10 erros em 24 horas, somando todos os códigos, bloqueiam o acesso pela internet até completar 24 h (ADR 0014)', async () => {
+    await signup(ana);
+    const wrongFor = (c: string) => (c === '000000' ? '111111' : '000000');
+    for (let round = 0; round < 2; round++) {
+      await post('/me/login/request', { email: ana.email });
+      for (let i = 0; i < 5; i++) await post('/me/login/verify', { email: ana.email, code: wrongFor(lastCode()) });
+    }
+    clock = new Date(clock.getTime() + 20 * 60_000);
+    await post('/me/login/request', { email: ana.email });
+    expect((await post('/me/login/verify', { email: ana.email, code: lastCode() })).statusCode).toBe(401);
+    clock = new Date(clock.getTime() + 24 * 3_600_000);
+    await post('/me/login/request', { email: ana.email });
+    expect((await post('/me/login/verify', { email: ana.email, code: lastCode() })).statusCode).toBe(200);
   });
 
   it('o código de um hóspede não serve para o e-mail de outro', async () => {
@@ -163,6 +196,16 @@ describe('sessão do hóspede', () => {
     expect((await get('/me')).statusCode).toBe(401);
   });
 
+  it('a rotina noturna apaga sessões vencidas e códigos antigos (igual ao banco)', async () => {
+    const g = await signup(ana);
+    await signIn(ana.email);
+    clock = new Date(clock.getTime() + 2 * 86_400_000);
+    const repo = new InMemoryMaintenanceRepository(ctx.stays, ctx.guests, () => clock, ctx.authRepo, ctx.portalRepo);
+    await runNightly({ repo, now: () => clock });
+    expect([...ctx.portalRepo.sessions.values()].filter((s) => s.guestId === g.id)).toHaveLength(0);
+    expect(ctx.portalRepo.codes).toHaveLength(0);
+  });
+
   it('sair encerra a sessão; a sessão vence em 24 horas', async () => {
     await signup(ana);
     const t1 = await signIn(ana.email);
@@ -189,6 +232,21 @@ describe('o que o hóspede vê', () => {
     expect(by('Café da manhã')).toMatchObject({ canRedeem: true, missingPoints: 0 });
     expect(by('Diária grátis')).toMatchObject({ canRedeem: false, missingPoints: 3000, tierOk: true });
     expect(by('Upgrade de suíte')).toMatchObject({ canRedeem: false, tierOk: false, minTier: 'Ouro' });
+    expect(list[0]).not.toHaveProperty('id');
+  });
+
+  it('nível vencido: a página segue a regra da recepção e não promete prêmio restrito (ADR 0014)', async () => {
+    const g = await signup(ana);
+    await earn(g.id, 9000); // pontos de Ouro
+    await post('/rewards', { name: 'Upgrade de suíte', type: 'UPGRADE', pointsCost: 1000, minTierRank: 2 }, ctx.headers);
+    ctx.stays.tiers.set(g.id, { rank: 2, validUntil: new Date('2026-03-01T00:00:00Z') }); // venceu hoje
+    const token = await signIn(ana.email);
+    const [reward] = (await get('/me/rewards', bearer(token))).json();
+    expect(reward).toMatchObject({ canRedeem: false, tierOk: false });
+    // E a recepção de fato recusa.
+    const [{ id: rewardId }] = (await get('/rewards')).json();
+    const r = await post('/redemptions', { guestId: g.id, rewardId, requestId: 'req-vencido-123' }, ctx.headers);
+    expect(r.json().error).toBe('tier_too_low');
   });
 
   it('indicado vê os pontos de boas-vindas pendentes; nível mais alto não mostra próximo nível', async () => {
@@ -231,7 +289,7 @@ describe('página e configuração', () => {
       loyalty: { stays },
       rewards: { repo: rewards },
       auth: { repo: new InMemoryAuthRepository(), audit: new InMemoryAuditRepository() },
-      guestPortal: { repo: new InMemoryGuestPortalRepository(guests, stays), rewards, stays },
+      guestPortal: { repo: new InMemoryGuestPortalRepository(guests, stays), rewards, stays, codeSecret: SECRET },
     });
     const r = await app.inject({ method: 'POST', url: '/me/login/request', payload: { email: 'a@b.com' } });
     expect(r.statusCode).toBe(503);

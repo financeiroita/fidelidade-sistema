@@ -1,4 +1,4 @@
-import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { loyaltyConfig, type LoyaltyConfig } from '../config/loyalty';
 import { addMonths, localDate } from '../domain/time';
 import { resolveTier } from '../domain/tiers/tier';
@@ -13,14 +13,20 @@ import {
   type StayRepository,
 } from './ports';
 
-/** Regras do acesso do hóspede (ADR 0013). */
+/** Regras do acesso do hóspede (ADRs 0013 e 0014). */
 export const guestLoginPolicy = {
   codeTtlMinutes: 10,
   /** Tentativas por código; depois o código é queimado. */
   maxAttempts: 5,
-  /** Códigos por hóspede numa janela de 15 minutos (limita adivinhação e spam no e-mail). */
+  /** Códigos por hóspede: no máximo 3 a cada 15 minutos e 10 por dia (adivinhação e spam no e-mail). */
   maxCodesPerWindow: 3,
   codeWindowMinutes: 15,
+  maxCodesPerDay: 10,
+  /**
+   * Erros de código por hóspede em 24 h, somando todos os códigos. Ao chegar aqui, o acesso pela
+   * internet fica bloqueado até o fim das 24 h (invadir vale mais que o incômodo; ver ADR 0014).
+   */
+  maxFailuresPerDay: 10,
   sessionHours: 24,
 };
 
@@ -28,44 +34,57 @@ export interface GuestPortalDeps {
   repo: GuestPortalRepository;
   rewards: RewardRepository;
   stays: StayRepository;
+  /** Segredo do servidor para o hash do código (sem ele, quem lê o banco acharia o código em 1 s). */
+  codeSecret: string;
   /** Sem `sender`, o acesso por código fica desligado (503). */
   sender?: GuestCodeSender;
   config?: LoyaltyConfig;
   now?: () => Date;
-  /** Falha no envio (só o tipo do erro; nunca o e-mail). */
+  /** Falha no pedido ou no envio do código (só o tipo do erro; nunca o e-mail). */
   onSendError?: (errName: string) => void;
+  /** Recebe a tarefa de segundo plano do pedido de código (os testes esperam por ela). */
+  track?: (task: Promise<void>) => void;
 }
 
 const MIN = 60_000;
+const DAY = 24 * 60 * MIN;
+/** Usado quando o e-mail não existe: a verificação faz o mesmo caminho no banco e não acha nada. */
+const NO_GUEST = '00000000-0000-0000-0000-000000000000';
 const clock = (deps: GuestPortalDeps) => (deps.now ?? (() => new Date()))();
-const codeHash = (guestId: string, code: string) => hashToken(`guest-code:${guestId}:${code}`);
+const codeHash = (secret: string, guestId: string, code: string) =>
+  createHmac('sha256', secret).update(`guest-code:${guestId}:${code}`).digest('hex');
 const firstName = (fullName: string) => fullName.trim().split(/\s+/)[0];
+const errName = (e: unknown) => (e instanceof Error ? e.name : 'Error');
 
 /**
- * Pede um código de acesso. Responde igual exista ou não o cadastro (não revela quem é hóspede).
- * O envio do e-mail roda em segundo plano.
+ * Pede um código de acesso. A resposta (202) sai antes de qualquer consulta: igual, e no mesmo
+ * tempo, exista ou não o cadastro. Consulta, gravação e envio rodam em segundo plano.
  */
-export async function requestLoginCode(deps: GuestPortalDeps, email: string): Promise<void> {
-  if (!deps.sender) throw new GuestLoginUnavailableError();
-  const now = clock(deps);
-  const guest = await deps.repo.findActiveGuestByEmail(email.trim().toLowerCase());
-  if (!guest) return;
-  const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-  const issued = await deps.repo.issueLoginCode(
-    {
-      id: randomUUID(),
-      guestId: guest.id,
-      codeHash: codeHash(guest.id, code),
-      expiresAt: new Date(now.getTime() + guestLoginPolicy.codeTtlMinutes * MIN),
-      now,
-    },
-    { since: new Date(now.getTime() - guestLoginPolicy.codeWindowMinutes * MIN), max: guestLoginPolicy.maxCodesPerWindow },
-  );
-  if (!issued) return; // pedidos demais: silencioso, para não revelar nada
+export function requestLoginCode(deps: GuestPortalDeps, email: string): void {
   const sender = deps.sender;
-  void sender
-    .send({ email: guest.email, firstName: firstName(guest.fullName) }, code)
-    .catch((e: unknown) => deps.onSendError?.(e instanceof Error ? e.name : 'Error'));
+  if (!sender) throw new GuestLoginUnavailableError();
+  const task = (async () => {
+    const now = clock(deps);
+    const guest = await deps.repo.findActiveGuestByEmail(email.trim().toLowerCase());
+    if (!guest) return;
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const issued = await deps.repo.issueLoginCode(
+      {
+        id: randomUUID(),
+        guestId: guest.id,
+        codeHash: codeHash(deps.codeSecret, guest.id, code),
+        expiresAt: new Date(now.getTime() + guestLoginPolicy.codeTtlMinutes * MIN),
+        now,
+      },
+      [
+        { since: new Date(now.getTime() - guestLoginPolicy.codeWindowMinutes * MIN), max: guestLoginPolicy.maxCodesPerWindow },
+        { since: new Date(now.getTime() - DAY), max: guestLoginPolicy.maxCodesPerDay },
+      ],
+    );
+    if (!issued) return; // pedidos demais: silencioso
+    await sender.send({ email: guest.email, firstName: firstName(guest.fullName) }, code);
+  })().catch((e: unknown) => deps.onSendError?.(errName(e)));
+  deps.track?.(task);
 }
 
 /** Troca e-mail + código por uma sessão do hóspede. */
@@ -77,9 +96,15 @@ export async function verifyLoginCode(
   if (!deps.sender) throw new GuestLoginUnavailableError();
   const now = clock(deps);
   const guest = await deps.repo.findActiveGuestByEmail(email.trim().toLowerCase());
-  if (!guest || !/^\d{6}$/.test(code)) throw new InvalidLoginCodeError();
-  const ok = await deps.repo.verifyLoginCode(guest.id, codeHash(guest.id, code), now, guestLoginPolicy.maxAttempts);
-  if (!ok) throw new InvalidLoginCodeError();
+  if (!/^\d{6}$/.test(code)) throw new InvalidLoginCodeError();
+  // E-mail desconhecido percorre o mesmo caminho (com um id que não existe), para não responder mais rápido.
+  const guestId = guest?.id ?? NO_GUEST;
+  const ok = await deps.repo.verifyLoginCode(guestId, codeHash(deps.codeSecret, guestId, code), now, {
+    maxAttemptsPerCode: guestLoginPolicy.maxAttempts,
+    maxFailures: guestLoginPolicy.maxFailuresPerDay,
+    failuresSince: new Date(now.getTime() - DAY),
+  });
+  if (!ok || !guest) throw new InvalidLoginCodeError();
   const { token, hash } = newSessionToken();
   const expiresAt = new Date(now.getTime() + guestLoginPolicy.sessionHours * 60 * MIN);
   await deps.repo.createGuestSession({ tokenHash: hash, guestId: guest.id, expiresAt, now });
@@ -158,17 +183,14 @@ export async function getGuestRewards(deps: GuestPortalDeps, guestId: string) {
   const now = clock(deps);
   const account = await deps.repo.getAccount(guestId);
   if (!account) throw new GuestNotFoundError();
-  const [balance, qualifying, rewards] = await Promise.all([
-    deps.rewards.getBalance(guestId, now),
-    deps.stays.qualifyingPointsSince(guestId, addMonths(now, -cfg.tierWindowMonths)),
-    deps.rewards.listActiveRewards(),
-  ]);
+  const [balance, rewards] = await Promise.all([deps.rewards.getBalance(guestId, now), deps.rewards.listActiveRewards()]);
   const available = balance?.available ?? 0;
-  const rank = effectiveRank(account.tierRank, account.tierValidUntil, qualifying, now, cfg);
+  // Mesma regra do resgate na recepção (redemptions.ts): nível vencido não abre prêmio restrito.
+  // Assim a página nunca diz "disponível" para um prêmio que a recepção recusaria.
+  const rank = account.tierRank > 0 && (!account.tierValidUntil || account.tierValidUntil <= now) ? 0 : account.tierRank;
   return rewards.map((r) => {
     const tierOk = rank >= r.minTierRank;
     return {
-      id: r.id,
       name: r.name,
       type: r.type,
       description: r.description ?? null,

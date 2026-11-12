@@ -1,6 +1,7 @@
 import type { MaintenanceRepository } from '../../application/ports';
 import type { ExpirationPlan, LotRow, NoticePlan } from '../../domain/points/maintenance';
 import type { InMemoryAuthRepository } from './authRepository';
+import type { InMemoryGuestPortalRepository } from './guestPortalRepository';
 import type { InMemoryGuestRepository } from './guestRepository';
 import type { InMemoryStayRepository } from './stayRepository';
 
@@ -13,10 +14,11 @@ export class InMemoryMaintenanceRepository implements MaintenanceRepository {
     private readonly guests: InMemoryGuestRepository,
     private readonly clock: () => Date = () => new Date(),
     private readonly auth?: InMemoryAuthRepository,
+    private readonly portal?: InMemoryGuestPortalRepository,
   ) {}
 
   async purgeExpiredSessions(now: Date) {
-    let n = 0;
+    let n = this.portal?.purge(now) ?? 0;
     for (const [hash, s] of this.auth?.sessions ?? []) {
       if (s.expiresAt <= now) {
         this.auth?.sessions.delete(hash);

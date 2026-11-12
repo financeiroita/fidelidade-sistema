@@ -27,6 +27,7 @@ async function main() {
         repo: new InMemoryGuestPortalRepository(guests, stays),
         rewards,
         stays,
+        codeSecret: SECRET,
         sender: { send: async (_to, code) => console.log(`\n>>> Código de acesso: ${code}\n`) },
       },
     },

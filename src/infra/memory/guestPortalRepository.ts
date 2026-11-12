@@ -30,28 +30,49 @@ export class InMemoryGuestPortalRepository implements GuestPortalRepository {
 
   async issueLoginCode(
     c: { id: string; guestId: string; codeHash: string; expiresAt: Date; now: Date },
-    limit: { since: Date; max: number },
+    limits: Array<{ since: Date; max: number }>,
   ) {
     if (!this.guests.active(c.guestId)) return false;
-    const recent = this.codes.filter((x) => x.guestId === c.guestId && x.createdAt >= limit.since).length;
-    if (recent >= limit.max) return false;
-    for (const x of this.codes) if (x.guestId === c.guestId && !x.usedAt) x.usedAt = c.now;
+    for (const l of limits) {
+      if (this.codes.filter((x) => x.guestId === c.guestId && x.createdAt >= l.since).length >= l.max) return false;
+    }
     this.codes.push({ id: c.id, guestId: c.guestId, codeHash: c.codeHash, attempts: 0, expiresAt: c.expiresAt, usedAt: null, createdAt: c.now });
     return true;
   }
 
-  async verifyLoginCode(guestId: string, codeHash: string, now: Date, maxAttempts: number) {
-    const code = this.codes
-      .filter((x) => x.guestId === guestId && !x.usedAt && x.expiresAt > now)
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
-    if (!code) return false;
-    if (sameHash(code.codeHash, codeHash)) {
-      code.usedAt = now;
+  async verifyLoginCode(
+    guestId: string,
+    codeHash: string,
+    now: Date,
+    policy: { maxAttemptsPerCode: number; maxFailures: number; failuresSince: Date },
+  ) {
+    const rows = this.codes
+      .filter((x) => x.guestId === guestId && x.createdAt >= policy.failuresSince)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    if (rows.reduce((s, r) => s + r.attempts, 0) >= policy.maxFailures) return false;
+    const valid = rows.filter((x) => !x.usedAt && x.expiresAt > now);
+    if (valid.length === 0) return false;
+    if (valid.map((r) => sameHash(r.codeHash, codeHash)).includes(true)) {
+      for (const r of valid) r.usedAt = now;
       return true;
     }
-    code.attempts++;
-    if (code.attempts >= maxAttempts) code.usedAt = now;
+    const newest = valid[0];
+    newest.attempts++;
+    if (newest.attempts >= policy.maxAttemptsPerCode) newest.usedAt = now;
     return false;
+  }
+
+  /** Igual à rotina noturna do banco: sessões vencidas e códigos vencidos há mais de 1 dia. */
+  purge(now: Date): number {
+    let n = 0;
+    for (const [hash, s] of this.sessions) {
+      if (s.expiresAt <= now) {
+        this.sessions.delete(hash);
+        n++;
+      }
+    }
+    this.codes = this.codes.filter((c) => c.expiresAt.getTime() > now.getTime() - 86_400_000);
+    return n;
   }
 
   async createGuestSession(s: { tokenHash: string; guestId: string; expiresAt: Date }) {

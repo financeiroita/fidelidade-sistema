@@ -40,6 +40,7 @@ Decisões que dependem do hotel (diretoria, marketing, jurídico, recepção). E
 | 30 | Enviar o código também por WhatsApp? | 0013 | Só e-mail | Hóspede sem e-mail cadastrado/atualizado não entra |
 | 31 | O hóspede pode pedir o resgate pela internet, ou só na recepção? | 0013 | Só na recepção; a página mostra o que já dá para resgatar | Conveniência x controle |
 | 32 | Por quanto tempo o hóspede fica logado? | 0013 | 24 horas, só na aba aberta | Conveniência x segurança em celular compartilhado |
+| 33 | Depois de 10 códigos errados num dia, o acesso pela internet fica bloqueado por 24 h. A recepção deve poder liberar antes? | 0014 | Não: só passando as 24 h | Hóspede bloqueado por terceiros x segurança |
 
 ## Respondidas
 - Stack: TypeScript + PostgreSQL (ADR 0002). Estadias via PMS e manual. Resort de lazer único. PMS Erbon com folio por categoria. Diária média R$ 700. Todos os hóspedes cadastrados entram, inclusive OTA (ADR 0004).

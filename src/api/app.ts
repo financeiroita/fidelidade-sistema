@@ -114,12 +114,11 @@ const guestCodeSchema = z.object({
   code: z.string().trim().regex(/^\d{6}$/),
 });
 
-/** A página do hóspede só carrega o próprio script e as fontes; nada de terceiros. */
+/** A página do hóspede só carrega arquivos do próprio servidor: nada vai para terceiros (nem o IP). */
 const PAGE_CSP = [
   "default-src 'none'",
   "script-src 'self'",
-  "style-src 'self' https://fonts.googleapis.com",
-  'font-src https://fonts.gstatic.com',
+  "style-src 'self'",
   "connect-src 'self'",
   "img-src 'self' data:",
   "base-uri 'none'",
@@ -255,10 +254,17 @@ export function buildApp(deps: AppDeps, opts: AppOptions = {}): FastifyInstance 
     // ---------- Área do hóspede ("Minha conta", ADR 0013) ----------
     const portal = deps.guestPortal;
     if (portal) {
-      const webDir = opts.webDir ?? resolve(process.cwd(), 'web');
-      const page = readFileSync(join(webDir, 'minha-conta.html'), 'utf8');
-      const script = readFileSync(join(webDir, 'minha-conta.js'), 'utf8');
-      const style = readFileSync(join(webDir, 'minha-conta.css'), 'utf8');
+      // A pasta web/ é achada a partir deste arquivo (não da pasta de onde o servidor foi iniciado).
+      // Se faltar, a API sobe mesmo assim, só sem a página.
+      const webDir = opts.webDir ?? resolve(__dirname, '../../web');
+      const read = (f: string) => {
+        try {
+          return readFileSync(join(webDir, f), 'utf8');
+        } catch {
+          app.log.error({ file: f }, 'arquivo da página Minha conta não encontrado');
+          return null;
+        }
+      };
       const asset = (body: string, type: string) => async (_req: FastifyRequest, reply: FastifyReply) =>
         reply
           .header('content-type', type)
@@ -266,16 +272,21 @@ export function buildApp(deps: AppDeps, opts: AppOptions = {}): FastifyInstance 
           .header('referrer-policy', 'no-referrer')
           .header('x-frame-options', 'DENY')
           .send(body);
-      api.get('/minha-conta', asset(page, 'text/html; charset=utf-8'));
-      api.get('/minha-conta.js', asset(script, 'text/javascript; charset=utf-8'));
-      api.get('/minha-conta.css', asset(style, 'text/css; charset=utf-8'));
+      for (const [path, file, type] of [
+        ['/minha-conta', 'minha-conta.html', 'text/html; charset=utf-8'],
+        ['/minha-conta.js', 'minha-conta.js', 'text/javascript; charset=utf-8'],
+        ['/minha-conta.css', 'minha-conta.css', 'text/css; charset=utf-8'],
+      ] as const) {
+        const body = read(file);
+        if (body !== null) api.get(path, asset(body, type));
+      }
 
       // Responde igual exista ou não o e-mail: não revela quem é hóspede.
       api.post('/me/login/request', { bodyLimit: 1024, ...limitOf(limits.guestLogin) }, async (req, reply) => {
         const parsed = guestEmailSchema.safeParse(req.body);
         if (!parsed.success) return reply.code(422).send(validationError(parsed.error.issues));
         try {
-          await requestLoginCode(portal, parsed.data.email);
+          requestLoginCode(portal, parsed.data.email); // segue em segundo plano; a resposta não espera
           return reply.code(202).send({ status: 'sent_if_registered' });
         } catch (e) {
           return businessError(e, reply);

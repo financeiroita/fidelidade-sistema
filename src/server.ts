@@ -56,8 +56,16 @@ function guestCodeSender(): GuestCodeSender | undefined {
   const mode = process.env.GUEST_CODE_DELIVERY;
   if (!mode) return undefined; // "Minha conta" fica sem login (503) até configurar
   if (mode === 'console') {
-    if (process.env.NODE_ENV === 'production') {
-      console.error('GUEST_CODE_DELIVERY=console é só para testes; não use em produção.');
+    // Só num computador de teste: produção declarada OU banco fora desta máquina = recusa.
+    let dbHost = '';
+    try {
+      dbHost = new URL(process.env.DATABASE_URL ?? '').hostname;
+    } catch {
+      dbHost = '';
+    }
+    const localDb = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(dbHost);
+    if (process.env.NODE_ENV === 'production' || !localDb) {
+      console.error('GUEST_CODE_DELIVERY=console é só para testes (banco nesta máquina, fora de produção).');
       process.exit(1);
     }
     return {
@@ -81,6 +89,7 @@ const app = buildApp(
       repo: new PrismaGuestPortalRepository(prisma),
       rewards,
       stays,
+      codeSecret: secret,
       sender: guestCodeSender(),
       onSendError: (errName) => console.error(JSON.stringify({ at: new Date().toISOString(), event: 'falha-envio-codigo', errName })),
     },

@@ -97,7 +97,7 @@
         store.set(token);
         loadAccount();
       } else if (r.status === 429) fail('code-error', 'Muitas tentativas. Aguarde um minuto.');
-      else fail('code-error', 'Código incorreto ou vencido. Confira o e-mail ou peça um novo código.');
+      else fail('code-error', 'Código incorreto ou vencido. Confira o e-mail ou peça um novo código. Depois de muitas tentativas, o acesso pela internet fica bloqueado por 24 horas; a recepção continua atendendo você.');
     }).catch(function () { busy(form, false); fail('code-error', 'Sem conexão. Tente de novo.'); });
   });
 

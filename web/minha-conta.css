@@ -1,9 +1,10 @@
-/* Mesma identidade da página do programa (docs/comunicacao/programa-fidelidade.html). Feita para celular primeiro. */
+/* Mesma identidade da página do programa (docs/comunicacao/programa-fidelidade.html). Feita para celular primeiro.
+   Fontes do próprio aparelho: a página não chama nenhum servidor de terceiros (ADR 0014). */
 :root{
   --bg:#F5F8F7; --surface:#FFFFFF; --fg:#10272B; --muted:#4F6568; --line:#D5E1DF;
   --deep:#0C3A41; --deep-fg:#EAF4F2; --accent:#C9791B; --accent-fg:#FFFFFF; --soft:#E3EFEC;
   --ok:#1F7A4D; --err:#B3261E; --gold:#F0B766;
-  --display:'Fraunces',Georgia,serif; --body:'Inter',system-ui,sans-serif;
+  --display:Georgia,'Iowan Old Style','Palatino Linotype',serif; --body:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0B1A1D; --surface:#12292D; --fg:#E6F0EE; --muted:#9DB4B6; --line:#24413F;

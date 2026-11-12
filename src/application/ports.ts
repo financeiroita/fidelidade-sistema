@@ -274,18 +274,26 @@ export interface GuestPortalRepository {
   /** Hóspede ativo (não excluído) com este e-mail. */
   findActiveGuestByEmail(email: string): Promise<{ id: string; email: string; fullName: string } | null>;
   /**
-   * Trava o hóspede, recusa (false) se já foram pedidos `max` códigos desde `since`, queima os
-   * códigos anteriores ainda válidos e grava o novo. Atômico.
+   * Trava o hóspede e grava o código novo, a não ser que algum limite esteja cheio (`max` códigos
+   * desde `since`): aí devolve false. Os códigos anteriores continuam valendo até vencer, para um
+   * pedido de terceiros não invalidar o código que o hóspede acabou de receber. Atômico.
    */
   issueLoginCode(
     c: { id: string; guestId: string; codeHash: string; expiresAt: Date; now: Date },
-    limit: { since: Date; max: number },
+    limits: Array<{ since: Date; max: number }>,
   ): Promise<boolean>;
   /**
-   * Confere o código válido mais recente do hóspede. Toda tentativa conta; ao acertar ou ao
-   * esgotar `maxAttempts`, o código é queimado. Atômico (tentativas simultâneas contam todas).
+   * Confere o código contra os códigos válidos do hóspede. Recusa tudo se os erros somados desde
+   * `failuresSince` chegaram a `maxFailures`. Acertou: queima todos os códigos válidos. Errou:
+   * conta a tentativa no código mais novo e o queima ao chegar a `maxAttemptsPerCode`.
+   * Atômico (tentativas simultâneas contam todas).
    */
-  verifyLoginCode(guestId: string, codeHash: string, now: Date, maxAttempts: number): Promise<boolean>;
+  verifyLoginCode(
+    guestId: string,
+    codeHash: string,
+    now: Date,
+    policy: { maxAttemptsPerCode: number; maxFailures: number; failuresSince: Date },
+  ): Promise<boolean>;
   createGuestSession(s: { tokenHash: string; guestId: string; expiresAt: Date; now: Date }): Promise<void>;
   /** Sessão de hóspede ativo (sessão de hóspede excluído não vale). */
   findGuestSession(tokenHash: string): Promise<{ guestId: string; expiresAt: Date } | null>;

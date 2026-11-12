@@ -8,8 +8,8 @@ _Atualizado: 2026-11-12_
 - Rotina noturna: vencimento de pontos, revisão de nível e gravação dos avisos de vencimento (ADR 0008).
 - Resgate de pontos, catálogo de prêmios, saldo e extrato (ADR 0009).
 - Login por funcionário, papéis (recepção, gerente, administrador) e registro de auditoria (ADR 0010).
-- Área do hóspede "Minha conta" (`/minha-conta`): entrada por código no e-mail, saldo, nível, progresso, vencimentos, extrato e prêmios (ADR 0013). Demonstração sem banco: `npm run demo:minha-conta`.
-- Testes: 153 rápidos (`npm test`, sem banco) e 30 de integração com PostgreSQL de verdade (`npm run test:integration`, versão 18 embutida, sem Docker).
+- Área do hóspede "Minha conta" (`/minha-conta`): entrada por código no e-mail, saldo, nível, progresso, vencimentos, extrato e prêmios (ADRs 0013 e 0014). Demonstração sem banco: `npm run demo:minha-conta`.
+- Testes: 157 rápidos (`npm test`, sem banco) e 32 de integração com PostgreSQL de verdade (`npm run test:integration`, versão 18 embutida, sem Docker).
 - Correções da revisão geral de 2026-11-12 e da auditoria seguinte (ver ADRs 0011 e 0012).
 
 ## Pendente técnico

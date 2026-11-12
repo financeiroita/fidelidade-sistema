@@ -92,7 +92,7 @@ Rotas internas exigem `Authorization: Bearer <token>` (token do `POST /auth/logi
 - `PORT`: porta da API (padrão 3000).
 - `TRUST_PROXY_ADDRS`: **só** quando o servidor estiver atrás de um proxy ou balanceador **seu** (ex.: Nginx, balanceador da nuvem). É o endereço desse proxy, ou a faixa de endereços dele (ex.: `127.0.0.1` se o Nginx roda na mesma máquina, ou `10.0.0.0/8`), separados por vírgula. Assim a API enxerga o IP real do visitante no limite de tentativas. Só pedidos vindos desses endereços podem informar o IP; quem conecta direto não consegue falsificá-lo. As antigas `TRUST_PROXY` e `TRUST_PROXY_HOPS` não valem mais: o servidor não inicia se encontrar uma delas (ADR 0012).
 
-- `GUEST_CODE_DELIVERY`: como o código de acesso da "Minha conta" chega ao hóspede. Hoje só existe `console` (o código aparece no terminal; **só para testes**, recusado com `NODE_ENV=production`). Sem a variável, o login do hóspede responde 503 até o hotel escolher o serviço de e-mail (pergunta 29).
+- `GUEST_CODE_DELIVERY`: como o código de acesso da "Minha conta" chega ao hóspede. Hoje só existe `console` (o código aparece no terminal; **só para testes**: o servidor recusa com `NODE_ENV=production` ou com o banco fora desta máquina). Sem a variável, o login do hóspede responde 503 até o hotel escolher o serviço de e-mail (pergunta 29).
 
 ## Erros comuns da API
 | Código | Erro | Quando |
@@ -100,7 +100,7 @@ Rotas internas exigem `Authorization: Bearer <token>` (token do `POST /auth/logi
 | 409 | `duplicate_stay` | Estadia repetida: mesmo número de reserva, ou período sobreposto a outra estadia do hóspede (a não ser que as duas tenham número) |
 | 422 | `stay_out_of_period` | Estadia terminou antes do cadastro, ou check-out há mais de 30 dias (ADR 0011) |
 | 409 | `stay_not_eligible` | Check-out ainda não aconteceu, estadia cancelada/no-show ou hóspede excluído |
-| 401 | `invalid_code` | Código do hóspede errado, vencido, já usado ou queimado (resposta sempre igual) |
+| 401 | `invalid_code` | Código do hóspede errado, vencido, já usado ou acesso bloqueado por 10 erros no dia (resposta sempre igual) |
 | 503 | `guest_login_unavailable` | Envio de código não configurado (`GUEST_CODE_DELIVERY`) |
 | 429 | `too_many_requests` | Limite de tentativas por IP |
 

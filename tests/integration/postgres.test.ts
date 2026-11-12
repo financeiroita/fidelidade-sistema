@@ -26,6 +26,11 @@ let authRepo: PrismaAuthRepository;
 let headers: Record<string, string>;
 let seq = 0;
 let sent: Array<{ email: string; code: string }> = [];
+/** Pedidos de código rodam em segundo plano; `flush()` espera todos terminarem. */
+const pending: Array<Promise<void>> = [];
+const flush = async () => {
+  while (pending.length) await pending.shift();
+};
 
 const ana = {
   fullName: 'Ana Souza',
@@ -119,7 +124,9 @@ beforeEach(async () => {
         rewards,
         stays,
         now,
+        codeSecret: SECRET,
         sender: { send: async (to, code) => void sent.push({ email: to.email, code }) },
+        track: (t) => void pending.push(t),
       },
     },
     { limits: { login: HIGH, password: HIGH, guests: HIGH, guestLogin: HIGH } },
@@ -543,8 +550,13 @@ describe('correções da revisão geral (ADR 0011)', () => {
   });
 });
 
-describe('área do hóspede (ADR 0013)', () => {
+describe('área do hóspede (ADRs 0013 e 0014)', () => {
   const get = (url: string, h: Record<string, string>) => app.inject({ method: 'GET', url, headers: h });
+  const post = async (url: string, payload?: object, h: Record<string, string> = headers) => {
+    const r = await app.inject({ method: 'POST', url, payload: payload as object, headers: h });
+    if (url === '/me/login/request') await flush();
+    return r;
+  };
 
   it('entra com o código e vê saldo, nível e vencimentos; o código não fica em texto no banco', async () => {
     const g = await newGuest();
@@ -579,12 +591,34 @@ describe('área do hóspede (ADR 0013)', () => {
     expect((await post('/me/login/verify', { email: ana.email, code: right }, {})).statusCode).toBe(401);
   });
 
-  it('10 pedidos de código simultâneos: no máximo 3 gravados e só 1 válido', async () => {
+  it('10 pedidos de código simultâneos: no máximo 3 gravados; entrar com um queima os outros', async () => {
     const g = await newGuest();
     const rs = await Promise.all(Array.from({ length: 10 }, () => post('/me/login/request', { email: ana.email }, {})));
     expect(rs.every((r) => r.statusCode === 202)).toBe(true);
     expect(await prisma.guestLoginCode.count({ where: { guestId: g.id } })).toBe(3);
-    expect(await prisma.guestLoginCode.count({ where: { guestId: g.id, usedAt: null } })).toBe(1);
+    expect(sent).toHaveLength(3);
+    expect((await post('/me/login/verify', { email: ana.email, code: sent[0].code }, {})).statusCode).toBe(200);
+    expect(await prisma.guestLoginCode.count({ where: { guestId: g.id, usedAt: null } })).toBe(0);
+  });
+
+  it('o mesmo código certo enviado 5 vezes ao mesmo tempo abre uma única sessão', async () => {
+    const g = await newGuest();
+    await post('/me/login/request', { email: ana.email }, {});
+    const code = sent[0].code;
+    const rs = await Promise.all(Array.from({ length: 5 }, () => post('/me/login/verify', { email: ana.email, code }, {})));
+    expect(rs.filter((r) => r.statusCode === 200)).toHaveLength(1);
+    expect(await prisma.guestSession.count({ where: { guestId: g.id } })).toBe(1);
+  });
+
+  it('erros simultâneos espalhados por 3 códigos: o bloqueio diário vale (10 erros)', async () => {
+    const g = await newGuest();
+    for (let i = 0; i < 3; i++) await post('/me/login/request', { email: ana.email }, {});
+    const codes = new Set(sent.map((s) => s.code));
+    const wrong = Array.from({ length: 1000 }, (_, i) => String(i).padStart(6, '0')).filter((c) => !codes.has(c)).slice(0, 30);
+    await Promise.all(wrong.map((code) => post('/me/login/verify', { email: ana.email, code }, {})));
+    const total = (await prisma.guestLoginCode.aggregate({ where: { guestId: g.id }, _sum: { attempts: true } }))._sum.attempts;
+    expect(total).toBe(10);
+    expect((await post('/me/login/verify', { email: ana.email, code: sent[2].code }, {})).statusCode).toBe(401);
   });
 
   it('a rotina noturna apaga sessões de hóspede vencidas', async () => {

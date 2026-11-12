@@ -33,6 +33,11 @@ export function makeApp(
   const portalRepo = new InMemoryGuestPortalRepository(guests, stays);
   /** Códigos "enviados" ao hóspede (o carteiro de teste só guarda). */
   const sent: Array<{ email: string; code: string }> = [];
+  /** Pedidos de código rodam em segundo plano; `flush()` espera todos terminarem. */
+  const pending: Array<Promise<void>> = [];
+  const flush = async () => {
+    while (pending.length) await pending.shift();
+  };
   const app = buildApp(
     {
       signup: { repo, documentSecret: SECRET, now },
@@ -44,7 +49,9 @@ export function makeApp(
         rewards,
         stays,
         now,
+        codeSecret: SECRET,
         sender: { send: async (to, code) => void sent.push({ email: to.email, code }) },
+        track: (t) => void pending.push(t),
       },
     },
     { limits: { guestLogin: HIGH, ...limits }, trustProxy },
@@ -71,5 +78,5 @@ export function makeApp(
   // Gerente por padrão: pode tudo menos administrar funcionários.
   const manager = operator('MANAGER', 'Gerente Teste');
 
-  return { app, guests, stays, rewards, authRepo, auditRepo, auth, operator, headers: manager.headers, manager, portalRepo, sent };
+  return { app, guests, stays, rewards, authRepo, auditRepo, auth, operator, headers: manager.headers, manager, portalRepo, sent, flush };
 }

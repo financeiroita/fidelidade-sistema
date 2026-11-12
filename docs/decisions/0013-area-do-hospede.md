@@ -1,6 +1,6 @@
 # 0013. Área do hóspede ("Minha conta") com código por e-mail
 
-- Status: Aceita (o provedor de e-mail ainda depende do hotel)
+- Status: Aceita (o provedor de e-mail ainda depende do hotel). Os limites do código, a validade dos códigos anteriores, as fontes e o modo de teste foram ajustados pelo ADR 0014.
 - Data: 2026-11-12
 
 ## Contexto
