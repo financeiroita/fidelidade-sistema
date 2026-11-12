@@ -14,6 +14,7 @@ Estado atual (2026-11-12): o núcleo do programa funciona e está testado, inclu
 | `docs/decisions/` | Registro de decisões (ADRs) — memória do projeto |
 | `docs/agents/` | Papéis de agentes verificadores/auditores |
 | `docs/comunicacao/` | Textos e páginas para hóspedes (rascunhos) |
+| `docs/pesquisa-programas-de-resorts.md` | Pesquisa de mercado e ideias a implementar |
 | `web/` | Página "Minha conta" do hóspede, servida pela API em `/minha-conta` |
 | `.claude/agents/` | Subagentes do Claude Code |
 

@@ -30,5 +30,7 @@ _Atualizado: 2026-11-12_
 ## Proposto, aguardando o hotel
 - Instagram: pontos por marcação do hotel em post, reels ou story, com vínculo da conta e aprovação do marketing (ADR 0015, perguntas 34 a 40). Seguir e curtir não podem pontuar.
 
+- Ideias da pesquisa de programas de resorts (`docs/pesquisa-programas-de-resorts.md`, perguntas 41 a 48): diária grátis por marco de noites, pontos pagando parte da conta, vencimento por inatividade, janela de nível maior, dias do membro, experiências locais, benefício à escolha e tarifa de membro.
+
 ## Pendente do hotel
 Todas as decisões que dependem do hotel estão em `docs/perguntas-em-aberto.md`.

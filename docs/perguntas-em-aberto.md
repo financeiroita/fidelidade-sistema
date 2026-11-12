@@ -48,7 +48,14 @@ Decisões que dependem do hotel (diretoria, marketing, jurídico, recepção). E
 | 38 | Instagram: haverá sorteios por comentário (com regulamento próprio)? | 0015, ligada à 5 | Não; comentários não pontuam | Engajamento x spam e regras da Meta |
 | 39 | Instagram: a conta do hotel já é profissional e ligada a uma página do Facebook? Quem cadastra o aplicativo na Meta e faz a verificação da empresa? | 0015 | Indefinido | Sem isso a integração não começa (revisão da Meta leva semanas) |
 | 40 | Instagram: o jurídico aprova o texto da autorização LGPD e a regra no regulamento (inclusive que seguir/curtir **não** pontuam)? | 0015 | Indefinido | LGPD e promessa ao hóspede |
-
+| 41 | Diária grátis por marco de noites (ex.: a cada 20 noites pagas)? Quantas noites? | pesquisa de resorts | Não existe | Motiva a voltar; custo de uma diária por marco |
+| 42 | Pontos podem pagar parte da conta (diária, restaurante, spa)? Quanto vale o ponto e qual o mínimo? | pesquisa de resorts, ligada à 4 | Só prêmios do catálogo | Resgate mais flexível; passivo de pontos |
+| 43 | Vencimento por inatividade (pontos só vencem após N meses sem estadia) em vez de 24 meses por ponto? | pesquisa de resorts | 24 meses por ponto | Mais simples para o hóspede; mais pontos em aberto |
+| 44 | Janela do nível: manter 12 meses, passar para 24, ou nível por número de estadias/noites? | pesquisa de resorts | 12 meses por pontos-base | Ouro/Diamante hoje quase inalcançáveis num resort de lazer |
+| 45 | Tarifa ou desconto de membro no site de reservas? O motor de reservas aceita? | pesquisa de resorts | Não existe | Principal motivo para reservar direto em vez de pelas OTAs |
+| 46 | Benefício à escolha por estadia (late check-out, drink, crédito no spa) escolhido antes da chegada? Quais opções por nível? | pesquisa de resorts, ligada à 10 | Não existe (depende das reservas do Erbon) | Benefício vivido no resort |
+| 47 | "Dias do membro": datas de baixa temporada com desconto ou pontos em dobro só para membros? | pesquisa de resorts, ligada à 5 | Campanhas não implementadas | Ocupação na baixa temporada |
+| 48 | Quais experiências locais (aula de surf, trilha, café na praia, parceiros) podem entrar no catálogo de prêmios? | pesquisa de resorts | Catálogo vazio | Prêmios que o hóspede valoriza mais que desconto |
 ## Respondidas
 - Stack: TypeScript + PostgreSQL (ADR 0002). Estadias via PMS e manual. Resort de lazer único. PMS Erbon com folio por categoria. Diária média R$ 700. Todos os hóspedes cadastrados entram, inclusive OTA (ADR 0004).
 - **CPF obrigatório** no cadastro; estrangeiro usa passaporte (ADR 0005).
