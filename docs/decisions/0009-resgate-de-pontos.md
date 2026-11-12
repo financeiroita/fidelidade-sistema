@@ -21,7 +21,7 @@
 ## Auditoria de 2026-11-11
 Corrigido:
 - **Saldo fantasma no cancelamento** (crítico): ver "Cancelar depois que o lote venceu". Testado com lote vencido antes e depois da rotina noturna, e com dois lotes.
-- Devolução ao lote só até o que o lote creditou (checado no próprio UPDATE); restrições de banco em `prisma/constraints.sql` (saldo nunca negativo nem acima do creditado, pontos positivos). **Aplicar o arquivo depois da primeira migração.**
+- Devolução ao lote só até o que o lote creditou (checado no próprio UPDATE); restrições de banco na migração `prisma/migrations/*_constraints` (saldo nunca negativo nem acima do creditado, pontos positivos), aplicadas junto com as demais migrações.
 - `use` só aceita estadia que existe e é do mesmo hóspede (422 `invalid_stay`).
 - `PATCH /rewards/:id` corrige preço/nome/nível ou retira o prêmio (`active: false`); resgates já feitos continuam seguindo o ciclo.
 - A hora do pedido é lida depois da trava do hóspede (lote que venceu na espera não é consumido); extrato de hóspede inexistente dá 404; índices de apoio e unicidade (resgate, lote).

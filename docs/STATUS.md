@@ -4,7 +4,7 @@ _Atualizado: 2026-11-11_
 
 - Feito: ADRs 0001-0006; schema Prisma; regras de pontos/níveis/expiração (testadas); páginas de demonstração (programa e cadastro em docs/comunicacao/); API `POST /guests` com CPF protegido por HMAC (25 testes passando, repositório em memória).
 - Auditoria da API feita; correções técnicas aplicadas (29 testes). Itens em aberto no fim do ADR 0006.
-- Não verificado: repositório Prisma contra um PostgreSQL real (sem migração nem Docker rodando).
+- Verificado em PostgreSQL real (versão 18 embutida, `npm run test:integration`): migrações, restrições, travas de linha, concorrência de check-out/resgate/cancelamento/rotina e login. Ainda não testado: PostgreSQL 16 do docker-compose e volume real de dados.
 - Feito: crédito de pontos no check-out e estadias manuais (ADR 0007, auditado, 47 testes; nível por pontos-base).
 - Feito: rotina noturna (vencimento de pontos, revisão de nível, avisos gravados) (ADR 0008, auditada, 62 testes).
 - Feito: resgate, saldo e extrato (ADR 0009, auditado, 88 testes).

@@ -15,3 +15,7 @@ CRM + fidelidade para um hotel/resort de lazer único. Estadias virão de um PMS
 
 ## Consequências
 Fácil integrar PMS via adaptadores em `src/infra/pms/` (a criar).
+
+## Atualização (2026-11-12): testes em PostgreSQL real e migrações
+- Primeira migração criada em `prisma/migrations` (`init`) e as restrições de integridade viraram a migração `constraints` (antes era `prisma/constraints.sql`, aplicado à mão).
+- `npm run test:integration` usa o pacote `embedded-postgres` (PostgreSQL 18 temporário, sem Docker) para provar travas de linha, restrições, P2002 e concorrência. O `docker-compose.yml` segue com PostgreSQL 16: validar nele antes de ir para produção.

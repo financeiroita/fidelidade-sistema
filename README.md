@@ -53,6 +53,10 @@ Exigem `Authorization: Bearer <token>` (token do `POST /auth/login`). Crie o pri
 - `POST /redemptions` e `POST /redemptions/:id/{confirm,use,cancel}` (internos): resgate e ciclo.
 - `GET /guests/:id/balance` e `GET /guests/:id/statement` (internos): saldo e extrato.
 
-Depois da primeira migração, aplique também as restrições de integridade: `psql "$DATABASE_URL" -f prisma/constraints.sql`.
+As restrições de integridade do banco (saldo nunca negativo etc.) já fazem parte das migrações em `prisma/migrations`: `npm run db:migrate` (desenvolvimento) ou `npx prisma migrate deploy` (produção) aplica tudo.
+
+### Testes
+- `npm test`: rápidos, sem banco.
+- `npm run test:integration`: sobe um PostgreSQL de verdade (embutido, temporário, não precisa de Docker), aplica as migrações e testa travas, concorrência e restrições.
 
 Se a conta de administrador for desativada ou travada e ninguém mais conseguir entrar: `npm run operator:unlock -- --username SEU_USUARIO`.
