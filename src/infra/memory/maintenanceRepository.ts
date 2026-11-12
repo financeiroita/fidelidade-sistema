@@ -34,7 +34,7 @@ export class InMemoryMaintenanceRepository implements MaintenanceRepository {
         guestId: t.guestId,
         remaining: t.remaining,
         expiresAt: t.expiresAt as Date,
-        guestActive: true,
+        guestActive: this.guests.active(t.guestId) !== null,
       }));
   }
 
@@ -60,6 +60,7 @@ export class InMemoryMaintenanceRepository implements MaintenanceRepository {
 
   async findTierReviewCandidates(now: Date) {
     return this.guests.guests
+      .filter((g) => !g.deletedAt)
       .map((g) => ({ guestId: g.id, t: this.stays.tiers.get(g.id) }))
       .filter(({ t }) => t && t.rank > 0 && (!t.validUntil || t.validUntil <= now))
       .map(({ guestId }) => ({ guestId }));
@@ -72,7 +73,7 @@ export class InMemoryMaintenanceRepository implements MaintenanceRepository {
     decide: (qualifyingPts: number) => { newRank: number; validUntil: Date | null },
   ) {
     const t = this.stays.tiers.get(guestId);
-    if (!t || t.rank === 0 || (t.validUntil && t.validUntil > now)) return null;
+    if (!t || !this.guests.active(guestId) || t.rank === 0 || (t.validUntil && t.validUntil > now)) return null;
     const plan = decide(await this.stays.qualifyingPointsSince(guestId, since));
     this.stays.tiers.set(guestId, { rank: plan.newRank, validUntil: plan.validUntil ?? undefined });
     return { previousRank: t.rank, newRank: plan.newRank };

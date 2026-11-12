@@ -3,6 +3,7 @@ import {
   DuplicateStayError,
   GuestNotFoundError,
   StayAlreadyProcessedError,
+  StayNotEligibleError,
   StayOutOfPeriodError,
   type CheckoutCommit,
   type CheckoutData,
@@ -29,13 +30,15 @@ export class PrismaStayRepository implements StayRepository {
         if (!allowed(rows[0].memberSince)) {
           throw new StayOutOfPeriodError('A estadia terminou antes do cadastro do hóspede.');
         }
-        // Sem identificador externo, período sobreposto ao de outra estadia do hóspede = lançamento repetido.
+        // Período sobreposto ao de outra estadia do hóspede = lançamento repetido, salvo se as DUAS
+        // têm número de reserva (ex.: dois quartos). Assim a ordem dos lançamentos não importa.
         // (Day use, com entrada e saída no mesmo dia, ocupa aquele dia.)
-        if (!s.externalRef) {
+        {
           const end = overlapEnd(s.checkIn, s.checkOut);
           const dup = await tx.stay.findFirst({
             where: {
               guestId: s.guestId,
+              ...(s.externalRef ? { pmsReservationId: null } : {}),
               status: { notIn: ['CANCELLED', 'NO_SHOW'] },
               checkIn: { lt: end },
               OR: [{ checkOut: { gt: s.checkIn } }, { checkIn: s.checkIn }],
@@ -113,11 +116,13 @@ export class PrismaStayRepository implements StayRepository {
     return r._sum.qualifyingPts ?? 0;
   }
 
-  async commitCheckout(c: CheckoutCommit): Promise<{ tierRank: number }> {
+  async commitCheckout(c: CheckoutCommit): Promise<{ tierRank: number; tierValidUntil: Date | null }> {
     try {
       return await this.prisma.$transaction(async (tx) => {
         // Trava o hóspede: check-outs simultâneos do mesmo hóspede passam a ser um de cada vez.
-        await tx.$queryRaw`SELECT id FROM "Guest" WHERE id = ${c.guestId} FOR UPDATE`;
+        // Se ele foi excluído (LGPD) depois da leitura, não credita nada.
+        const locked = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "Guest" WHERE id = ${c.guestId} AND "deletedAt" IS NULL FOR UPDATE`;
+        if (locked.length === 0) throw new StayNotEligibleError('Hóspede excluído do programa.');
 
         // Só um processamento vence: a condição pointsProcessedAt = null é checada no próprio UPDATE.
         const claimed = await tx.stay.updateMany({
@@ -147,7 +152,7 @@ export class PrismaStayRepository implements StayRepository {
         // check-outs simultâneos do mesmo hóspede não perdem a subida, e o nível nunca regride aqui.
         const current = await tx.guest.findUniqueOrThrow({
           where: { id: c.guestId },
-          select: { tier: { select: { rank: true } } },
+          select: { tierValidUntil: true, tier: { select: { rank: true } } },
         });
         const agg = await tx.pointsTransaction.aggregate({
           where: { guestId: c.guestId, createdAt: { gte: c.tierWindowStart } },
@@ -163,7 +168,7 @@ export class PrismaStayRepository implements StayRepository {
         if (decision.tierValidUntil) data.tierValidUntil = decision.tierValidUntil;
         if (c.clearWelcomePending) data.welcomeBonusPending = 0;
         if (Object.keys(data).length > 0) await tx.guest.update({ where: { id: c.guestId }, data });
-        return { tierRank };
+        return { tierRank, tierValidUntil: decision.tierValidUntil ?? current.tierValidUntil };
       });
     } catch (e) {
       // Chave de idempotência repetida: outro processamento gravou antes. O chamador recarrega e recalcula.

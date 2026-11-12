@@ -201,9 +201,11 @@ export async function processCheckout(deps: LoyaltyDeps, stayId: string): Promis
     );
     const plan = planCheckout(data, qualifyingBefore, now, cfg);
     try {
-      const { tierRank } = await deps.stays.commitCheckout(plan.commit);
+      const { tierRank, tierValidUntil } = await deps.stays.commitCheckout(plan.commit);
       const upgraded = tierRank > data.guest.tierRank;
-      const tier = upgraded ? (cfg.tiers.find((t) => t.rank === tierRank) ?? cfg.tiers[0]).name : plan.tier;
+      // Nível final gravado; se continua vencido (não foi renovado), vale o que o hóspede atinge (prévia).
+      const stillExpired = tierRank > 0 && (!tierValidUntil || tierValidUntil <= now);
+      const tier = stillExpired ? plan.tier : (cfg.tiers.find((t) => t.rank === tierRank) ?? cfg.tiers[0]).name;
       return { stayId, alreadyProcessed: false, earned: plan.earned, tier, upgraded };
     } catch (e) {
       // Conflito: ou esta estadia já foi processada (o próximo ciclo detecta e responde) ou os

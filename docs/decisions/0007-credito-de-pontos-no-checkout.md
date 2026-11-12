@@ -25,6 +25,7 @@ Corrigido:
 - Check-outs simultâneos de estadias diferentes do mesmo hóspede: o hóspede é travado na transação (`FOR UPDATE`), e se o crédito perder a corrida o sistema recarrega os dados e recalcula (até 3 tentativas), em vez de responder "já processado" sem ter creditado.
 - Lançamento duplicado: `externalRef` opcional (identificador único do lançamento); sem ele, o mesmo hóspede com as mesmas datas é recusado (409).
 - Check-out de estadia futura é recusado; datas limitadas a 5 anos atrás e 1 ano à frente.
+  - Nota (2026-11-12): para lançamento manual, o limite real passou a ser saída nos últimos 30 dias e não antes do cadastro (ADR 0011). Os 5 anos continuam como validação de formato.
 - Valores com no máximo 2 casas; teto de R$ 200.000 por linha, R$ 500.000 por estadia e 100 linhas; soma em centavos inteiros (sem perder ponto por ponto flutuante).
 - Nível não regride por check-out concorrente; manter o nível renova a validade (`tierValidUntil`).
 - Chaves secretas exigem variedade de caracteres; logs de erro não incluem mensagens do banco; `id` do check-out é validado.

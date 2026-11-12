@@ -129,8 +129,8 @@ export interface StayRepository {
   loadCheckout(stayId: string): Promise<CheckoutData | null>;
   /** Soma de pontos qualificáveis do hóspede creditados desde a data (janela do nível). */
   qualifyingPointsSince(guestId: string, since: Date): Promise<number>;
-  /** Atômico: grava créditos, marca a estadia como processada, atualiza nível e zera o pendente. Devolve o nível final. */
-  commitCheckout(commit: CheckoutCommit): Promise<{ tierRank: number }>;
+  /** Atômico: grava créditos, marca a estadia como processada, atualiza nível e zera o pendente. Devolve o nível final e sua validade. */
+  commitCheckout(commit: CheckoutCommit): Promise<{ tierRank: number; tierValidUntil: Date | null }>;
 }
 
 // ---- Resgates ----

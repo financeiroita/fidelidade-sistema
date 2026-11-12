@@ -8,7 +8,7 @@ _Atualizado: 2026-11-12_
 - Rotina noturna: vencimento de pontos, revisão de nível e gravação dos avisos de vencimento (ADR 0008).
 - Resgate de pontos, catálogo de prêmios, saldo e extrato (ADR 0009).
 - Login por funcionário, papéis (recepção, gerente, administrador) e registro de auditoria (ADR 0010).
-- Testes: 130 rápidos (`npm test`, sem banco) e 24 de integração com PostgreSQL de verdade (`npm run test:integration`, versão 18 embutida, sem Docker).
+- Testes: 138 rápidos (`npm test`, sem banco) e 26 de integração com PostgreSQL de verdade (`npm run test:integration`, versão 18 embutida, sem Docker).
 - Correções da revisão geral de 2026-11-12 (ver ADR 0011).
 
 ## Pendente técnico

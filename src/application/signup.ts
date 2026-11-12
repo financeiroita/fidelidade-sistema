@@ -15,7 +15,6 @@ export interface SignupResult {
   id: string;
   referralCode: string;
   tier: string;
-  /** Pontos de boas-vindas que serão creditados após o 1º check-out (ADR 0006). */
 }
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

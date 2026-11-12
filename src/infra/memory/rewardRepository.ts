@@ -87,7 +87,7 @@ export class InMemoryRewardRepository implements RewardRepository {
       getGuest: async (id) => {
         const g = this.guests.guests.find((x) => x.id === id);
         const t = this.stays.tiers.get(id);
-        return g ? { id, tierRank: t?.rank ?? 0, tierValidUntil: t?.validUntil ?? null, active: true } : null;
+        return g ? { id, tierRank: t?.rank ?? 0, tierValidUntil: t?.validUntil ?? null, active: !g.deletedAt } : null;
       },
       getReward: async (id) => this.rewards.get(id) ?? null,
       getRedemptionByRequest: async (requestId) =>

@@ -164,21 +164,36 @@ describe('proteção contra rajada e adivinhação', () => {
     expect(codes).toEqual([201, 201, 429]);
   });
 
-  it('atrás de 1 proxy, inventar o IP no X-Forwarded-For não fura o limite', async () => {
-    ctx = makeApp(undefined, () => clock, { login: 100, password: 100, guests: 2 }, 1);
+  const docs = ['529.982.247-25', '111.444.777-35', '168.995.350-09'];
+  const viaProxy = (remoteAddress: string, xff: string, i: number) =>
+    ctx.app.inject({
+      method: 'POST',
+      url: '/guests',
+      remoteAddress,
+      headers: { 'x-forwarded-for': xff },
+      payload: { ...ana, email: `p${i}@example.com`, document: docs[i] },
+    });
+
+  it('atrás do proxy, inventar o IP no X-Forwarded-For não fura o limite', async () => {
+    ctx = makeApp(undefined, () => clock, { login: 100, password: 100, guests: 2 }, ['10.0.0.1']);
     const codes = [];
-    for (let i = 0; i < 3; i++) {
-      const res = await ctx.app.inject({
-        method: 'POST',
-        url: '/guests',
-        remoteAddress: '10.0.0.1', // o proxy do hotel
-        // O cliente inventa um IP diferente a cada pedido; o proxy acrescenta o IP real no fim.
-        headers: { 'x-forwarded-for': `203.0.113.${i}, 198.51.100.7` },
-        payload: { ...ana, email: `p${i}@example.com`, document: ['529.982.247-25', '111.444.777-35', '168.995.350-09'][i] },
-      });
-      codes.push(res.statusCode);
-    }
+    // O cliente inventa um IP diferente a cada pedido; o proxy do hotel (10.0.0.1) acrescenta o IP real no fim.
+    for (let i = 0; i < 3; i++) codes.push((await viaProxy('10.0.0.1', `203.0.113.${i}, 198.51.100.7`, i)).statusCode);
     expect(codes).toEqual([201, 201, 429]);
+  });
+
+  it('quem conecta direto (sem passar pelo proxy) não consegue inventar o IP', async () => {
+    ctx = makeApp(undefined, () => clock, { login: 100, password: 100, guests: 2 }, ['10.0.0.1']);
+    const codes = [];
+    for (let i = 0; i < 3; i++) codes.push((await viaProxy('198.51.100.9', `203.0.113.${i}`, i)).statusCode);
+    expect(codes).toEqual([201, 201, 429]);
+  });
+
+  it('atrás do proxy, visitantes diferentes têm limites separados', async () => {
+    ctx = makeApp(undefined, () => clock, { login: 100, password: 100, guests: 2 }, ['10.0.0.1']);
+    const codes = [];
+    for (let i = 0; i < 3; i++) codes.push((await viaProxy('10.0.0.1', `198.51.100.${i}`, i)).statusCode);
+    expect(codes).toEqual([201, 201, 201]);
   });
 
   it('corpo grande demais nas rotas de senha é recusado', async () => {

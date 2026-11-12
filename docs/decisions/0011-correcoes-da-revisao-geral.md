@@ -1,6 +1,6 @@
 # 0011. Correções da revisão geral
 
-- Status: Aceita
+- Status: Aceita (item 8 substituído e item 4 completado pelo ADR 0012)
 - Data: 2026-11-12
 
 ## Contexto

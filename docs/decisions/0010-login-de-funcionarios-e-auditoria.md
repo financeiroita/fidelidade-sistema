@@ -27,7 +27,7 @@
 
 ## Auditoria de 2026-11-11
 Corrigido:
-- **Rajada de logins** (alto): no máximo 4 senhas são processadas ao mesmo tempo, com fila de 64; o que passa disso recebe 503. Depois da senha, a conta é relida (travada ou desativada no meio da rajada é recusada). **Limite por IP** (`@fastify/rate-limit`): login e troca de senha 10 por minuto, cadastro público 20 por minuto (429). Corpo de 1 KB nas rotas de senha, timeout de conexão e de requisição de 30 s. ~~Use `TRUST_PROXY=true`~~ (substituído no ADR 0011 por `TRUST_PROXY_HOPS`, o número de proxies seus na frente).
+- **Rajada de logins** (alto): no máximo 4 senhas são processadas ao mesmo tempo, com fila de 64; o que passa disso recebe 503. Depois da senha, a conta é relida (travada ou desativada no meio da rajada é recusada). **Limite por IP** (`@fastify/rate-limit`): login e troca de senha 10 por minuto, cadastro público 20 por minuto (429). Corpo de 1 KB nas rotas de senha, timeout de conexão e de requisição de 30 s. ~~Use `TRUST_PROXY=true`~~ (substituído no ADR 0011 por `TRUST_PROXY_HOPS`, o número de proxies seus na frente). Depois substituído por `TRUST_PROXY_ADDRS`, com os endereços dos proxies (ADR 0012).
 - **Auditoria inchada:** login de usuário desconhecido não é mais gravado (qualquer pessoa na internet encheria o histórico).
 - **Trocar a própria senha** agora conta as senhas atuais erradas e trava (quem roubou uma sessão não adivinha por aqui).
 - **Administradores:** ninguém redefine a própria senha pela rota de administrador (só pela rota própria, com a senha atual); o último administrador ativo não pode ser desativado, nem por dois pedidos simultâneos (trava as linhas dos administradores); `npm run operator:unlock -- --username x` reativa e destrava uma conta pela linha de comando.

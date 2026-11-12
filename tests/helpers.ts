@@ -16,7 +16,7 @@ export function makeApp(
   repo: GuestRepository = new InMemoryGuestRepository(),
   now?: () => Date,
   limits: { login?: number; password?: number; guests?: number } = { login: HIGH, password: HIGH, guests: HIGH },
-  trustProxy?: number,
+  trustProxy?: string[],
 ) {
   const guests = repo as InMemoryGuestRepository;
   const stays = new InMemoryStayRepository(guests);

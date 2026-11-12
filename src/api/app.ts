@@ -79,9 +79,11 @@ export interface AppDeps {
 
 export interface AppOptions {
   logger?: boolean;
-  /** Confiar no cabeçalho do proxy para descobrir o IP real (use só atrás de um proxy seu). */
-  /** Número de proxies seus na frente (ou false). Nunca true: o cliente poderia forjar o IP. */
-  trustProxy?: number | false;
+  /**
+   * Endereços/faixas (IP ou CIDR) dos proxies SEUS cujo X-Forwarded-For é aceito (ou false).
+   * Nunca "todos" nem só uma contagem de saltos: quem conecta direto poderia forjar o IP (ADR 0012).
+   */
+  trustProxy?: string[] | false;
   /** Pedidos por minuto, por IP, nas rotas abertas e sensíveis. */
   limits?: { login?: number; password?: number; guests?: number };
 }
@@ -98,8 +100,8 @@ export function buildApp(deps: AppDeps, opts: AppOptions = {}): FastifyInstance 
   const app = Fastify({
     logger: opts.logger ? { redact: ['req.headers.authorization'] } : false,
     bodyLimit: 64 * 1024,
-    // Confia só nos N saltos mais próximos (equivale a trustProxy: N; o tipo do Fastify não aceita número).
-    trustProxy: opts.trustProxy ? (_addr: string, hop: number) => hop < (opts.trustProxy as number) : false,
+    // Só aceita o X-Forwarded-For quando quem conecta é um proxy da lista.
+    trustProxy: opts.trustProxy && opts.trustProxy.length > 0 ? opts.trustProxy : false,
     // Conexões lentas de propósito não ficam penduradas.
     connectionTimeout: 30_000,
     requestTimeout: 30_000,

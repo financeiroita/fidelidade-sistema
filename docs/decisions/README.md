@@ -18,4 +18,5 @@ Memória do projeto. Para alterar uma decisão: crie novo ADR e marque o antigo 
 | [0008](0008-rotina-noturna.md) | Rotina noturna: vencimento, nível e avisos | Aceita |
 | [0009](0009-resgate-de-pontos.md) | Resgate de pontos, saldo e extrato | Aceita |
 | [0010](0010-login-de-funcionarios-e-auditoria.md) | Login de funcionários, permissões e auditoria | Aceita |
-| [0011](0011-correcoes-da-revisao-geral.md) | Correções da revisão geral | Aceita |
+| [0011](0011-correcoes-da-revisao-geral.md) | Correções da revisão geral | Aceita (item 8 substituído pelo ADR 0012) |
+| [0012](0012-proxy-por-endereco-e-correcoes-da-auditoria.md) | Proxy por endereço e correções da auditoria | Aceita |

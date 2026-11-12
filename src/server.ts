@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import { PrismaClient } from '@prisma/client';
 import { buildApp } from './api/app';
 import { PrismaAuditRepository, PrismaAuthRepository } from './infra/prisma/authRepository';
@@ -16,18 +17,33 @@ if (!strongSecret(secret, 32)) {
   process.exit(1);
 }
 
-function proxyHops(): number | false {
-  if (process.env.TRUST_PROXY !== undefined) {
-    console.error('TRUST_PROXY foi substituído por TRUST_PROXY_HOPS (número de proxies na frente). Ver README.');
+/** IP (v4/v6) com faixa opcional (/n); recusa "confiar em todos" (prefixo /0). */
+function validProxyAddr(v: string): boolean {
+  const [ip, prefix, extra] = v.split('/');
+  const kind = isIP(ip);
+  if (!kind || extra !== undefined) return false;
+  if (prefix === undefined) return true;
+  if (!/^\d{1,3}$/.test(prefix)) return false;
+  const n = Number(prefix);
+  return n >= 1 && n <= (kind === 4 ? 32 : 128);
+}
+
+function proxyAddrs(): string[] | false {
+  for (const old of ['TRUST_PROXY', 'TRUST_PROXY_HOPS']) {
+    if (process.env[old] !== undefined) {
+      console.error(`${old} foi substituído por TRUST_PROXY_ADDRS (endereços dos seus proxies, ex.: 127.0.0.1). Ver README.`);
+      process.exit(1);
+    }
+  }
+  const v = process.env.TRUST_PROXY_ADDRS?.trim();
+  if (!v) return false;
+  const list = v.split(',').map((s) => s.trim()).filter(Boolean);
+  const bad = list.filter((a) => !validProxyAddr(a));
+  if (bad.length > 0) {
+    console.error(`TRUST_PROXY_ADDRS inválido: ${bad.join(', ')}. Use IPs ou faixas (ex.: 127.0.0.1,10.0.0.0/8).`);
     process.exit(1);
   }
-  const v = process.env.TRUST_PROXY_HOPS;
-  if (v === undefined || v === '' || v === '0') return false;
-  if (!/^[1-9]$/.test(v)) {
-    console.error('TRUST_PROXY_HOPS deve ser um número de 1 a 9.');
-    process.exit(1);
-  }
-  return Number(v);
+  return list;
 }
 
 const prisma = new PrismaClient();
@@ -43,9 +59,9 @@ const app = buildApp(
       onAuditError: (code) => console.error(JSON.stringify({ at: new Date().toISOString(), event: 'falha-auditoria', code })),
     },
   },
-  // TRUST_PROXY_HOPS = quantos proxies/balanceadores SEUS ficam na frente do servidor (ex.: 1).
-  // Nunca "confiar em todos": o cliente poderia inventar o próprio IP no X-Forwarded-For e furar o limite.
-  { logger: true, trustProxy: proxyHops() },
+  // TRUST_PROXY_ADDRS = endereços dos proxies/balanceadores SEUS (ex.: 127.0.0.1 se o Nginx está na mesma máquina).
+  // Só pedidos vindos deles podem informar o IP do visitante; quem conecta direto não consegue inventar o IP.
+  { logger: true, trustProxy: proxyAddrs() },
 );
 
 const port = Number(process.env.PORT ?? 3000);

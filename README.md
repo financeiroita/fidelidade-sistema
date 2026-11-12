@@ -82,7 +82,15 @@ Rotas internas exigem `Authorization: Bearer <token>` (token do `POST /auth/logi
 - `DATABASE_URL`: endereço do banco.
 - `DOCUMENT_HASH_SECRET`: chave do CPF (passo 3).
 - `PORT`: porta da API (padrão 3000).
-- `TRUST_PROXY_HOPS`: **só** quando o servidor estiver atrás de um proxy ou balanceador **seu** (ex.: Nginx, balanceador da nuvem). É o número de proxies na frente do servidor (normalmente `1`), para a API enxergar o IP real do visitante no limite de tentativas. **Nunca** use se o servidor recebe conexões direto da internet: qualquer pessoa poderia falsificar o IP e driblar o limite.
+- `TRUST_PROXY_ADDRS`: **só** quando o servidor estiver atrás de um proxy ou balanceador **seu** (ex.: Nginx, balanceador da nuvem). É o endereço desse proxy, ou a faixa de endereços dele (ex.: `127.0.0.1` se o Nginx roda na mesma máquina, ou `10.0.0.0/8`), separados por vírgula. Assim a API enxerga o IP real do visitante no limite de tentativas. Só pedidos vindos desses endereços podem informar o IP; quem conecta direto não consegue falsificá-lo. As antigas `TRUST_PROXY` e `TRUST_PROXY_HOPS` não valem mais: o servidor não inicia se encontrar uma delas (ADR 0012).
+
+## Erros comuns da API
+| Código | Erro | Quando |
+|---|---|---|
+| 409 | `duplicate_stay` | Estadia repetida: mesmo número de reserva, ou período sobreposto a outra estadia do hóspede (a não ser que as duas tenham número) |
+| 422 | `stay_out_of_period` | Estadia terminou antes do cadastro, ou check-out há mais de 30 dias (ADR 0011) |
+| 409 | `stay_not_eligible` | Check-out ainda não aconteceu, estadia cancelada/no-show ou hóspede excluído |
+| 429 | `too_many_requests` | Limite de tentativas por IP |
 
 ## Emergência
 Se a conta de administrador for desativada ou travada e ninguém mais conseguir entrar: `npm run operator:unlock -- --username SEU_USUARIO`.

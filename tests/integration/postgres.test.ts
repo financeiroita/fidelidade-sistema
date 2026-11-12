@@ -4,6 +4,8 @@ import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
 import { buildApp } from '../../src/api/app';
 import { createOperator } from '../../src/application/auth';
+import { processCheckout } from '../../src/application/checkout';
+import { StayNotEligibleError } from '../../src/application/ports';
 import { runNightly } from '../../src/application/maintenance';
 import { loyaltyConfig } from '../../src/config/loyalty';
 import { PrismaAuditRepository, PrismaAuthRepository } from '../../src/infra/prisma/authRepository';
@@ -468,6 +470,33 @@ describe('correções da revisão geral (ADR 0011)', () => {
     expect(rs.filter((r) => r.statusCode === 201)).toHaveLength(1);
     expect(rs.filter((r) => r.statusCode === 409)).toHaveLength(2);
     expect(await prisma.stay.count({ where: { guestId: g.id } })).toBe(1);
+  });
+
+  it('sem número e com número ao mesmo tempo, para o mesmo período: cria uma só (ADR 0012)', async () => {
+    const g = await newGuest();
+    const body = { guestId: g.id, channel: 'PHONE', checkIn: '2026-02-27', checkOut: '2026-03-01', charges: [{ category: 'ROOM', amount: 1000 }] };
+    const rs = await Promise.all([post('/stays', body), post('/stays', { ...body, externalRef: 'MIX-PG' })]);
+    expect(rs.map((r) => r.statusCode).sort()).toEqual([201, 409]);
+    expect(await prisma.stay.count({ where: { guestId: g.id } })).toBe(1);
+    // Com números diferentes, o mesmo período é aceito (dois quartos).
+    const g2 = await newGuest({ email: 'quartos@example.com', document: '111.444.777-35' });
+    const b2 = { ...body, guestId: g2.id };
+    expect((await post('/stays', { ...b2, externalRef: 'Q-1' })).statusCode).toBe(201);
+    expect((await post('/stays', { ...b2, externalRef: 'Q-2' })).statusCode).toBe(201);
+  });
+
+  it('hóspede excluído entre a leitura e a gravação do check-out não recebe pontos (ADR 0012)', async () => {
+    const g = await newGuest();
+    const id = await openStay(g.id, 1000);
+    const repo = new PrismaStayRepository(prisma);
+    const data = await repo.loadCheckout(id);
+    expect(data?.guest.active).toBe(true);
+    await prisma.guest.update({ where: { id: g.id }, data: { deletedAt: new Date() } });
+    // A leitura antiga (hóspede ativo) chega à gravação: quem barra é a trava do banco.
+    const stale = Object.assign(Object.create(repo) as PrismaStayRepository, { loadCheckout: async () => data });
+    await expect(processCheckout({ stays: stale, now: () => clock }, id)).rejects.toBeInstanceOf(StayNotEligibleError);
+    expect(await prisma.pointsTransaction.count({ where: { guestId: g.id } })).toBe(0);
+    expect((await prisma.stay.findUniqueOrThrow({ where: { id } })).pointsProcessedAt).toBeNull();
   });
 
   it('estadia que terminou antes do cadastro é recusada', async () => {

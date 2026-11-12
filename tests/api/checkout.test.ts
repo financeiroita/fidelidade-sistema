@@ -105,6 +105,14 @@ describe('lançamento sem duplicar e com limites', () => {
     expect((await stay(g.id, room, 'PHONE', { checkIn: '2026-07-13', checkOut: '2026-07-15' })).statusCode).toBe(201);
   });
 
+  it('a ordem não importa: lançada sem número e depois com número, a 2ª é recusada (ADR 0012)', async () => {
+    const g = await signup(ana);
+    expect((await stay(g.id, room)).statusCode).toBe(201);
+    const second = await stay(g.id, room, 'PHONE', { externalRef: 'MIX-1' });
+    expect(second.statusCode).toBe(409);
+    expect(second.json().error).toBe('duplicate_stay');
+  });
+
   it('estadia anterior ao cadastro ou antiga demais é recusada (ADR 0004 e 0011)', async () => {
     const g = await signup(ana); // cadastro em 13/07/2026
     const before = await stay(g.id, room, 'PHONE', { checkIn: '2026-07-01', checkOut: '2026-07-05', externalRef: 'OLD-1' });
@@ -169,6 +177,63 @@ describe('concorrência no mesmo hóspede', () => {
     expect(first.toISOString().startsWith('2027-07-13')).toBe(true);
     await complete(g.id, [{ category: 'ROOM', amount: 100 }], 'OTA');
     expect(ctx.stays.tiers.get(g.id)!.rank).toBe(1);
+  });
+
+  it('nível vencido renovado no check-out aparece renovado na resposta (ADR 0012)', async () => {
+    const g = await signup(ana);
+    // Prata com validade vencida e a rotina noturna ainda não rodou; nenhum ponto nos últimos 12 meses.
+    ctx.stays.tiers.set(g.id, { rank: 1, validUntil: new Date('2026-07-01T00:00:00Z') });
+    const r = await complete(g.id, [{ category: 'ROOM', amount: 3500 }], 'OTA');
+    expect(ctx.stays.tiers.get(g.id)).toMatchObject({ rank: 1 });
+    expect(ctx.stays.tiers.get(g.id)!.validUntil!.toISOString().startsWith('2027-07-13')).toBe(true);
+    expect(r).toMatchObject({ tier: 'Prata', upgraded: false });
+  });
+
+  it('nível vencido e não mantido: a resposta mostra o nível que o hóspede atinge', async () => {
+    const g = await signup(ana);
+    ctx.stays.tiers.set(g.id, { rank: 1, validUntil: new Date('2026-07-01T00:00:00Z') });
+    const r = await complete(g.id, [{ category: 'ROOM', amount: 100 }], 'OTA');
+    expect(r).toMatchObject({ tier: 'Bronze', upgraded: false });
+  });
+});
+
+describe('hóspede excluído (LGPD)', () => {
+  const room = [{ category: 'ROOM', amount: 1000 }];
+  const remove = (id: string) => {
+    ctx.guests.guests.find((g) => g.id === id)!.deletedAt = new Date('2026-07-13T10:00:00Z');
+  };
+
+  it('não recebe estadia nova nem pontos', async () => {
+    const g = await signup(ana);
+    const { id } = (await stay(g.id, room, 'OTA', { externalRef: 'DEL-1' })).json();
+    remove(g.id);
+    expect((await stay(g.id, room, 'OTA', { checkIn: '2026-07-01', checkOut: '2026-07-03', externalRef: 'DEL-2' })).statusCode).not.toBe(201);
+    const r = await checkout(id);
+    expect(r.statusCode).toBe(409);
+    expect(r.json().error).toBe('stay_not_eligible');
+    expect(ctx.stays.balance(g.id)).toBe(0);
+  });
+
+  it('excluído entre a leitura e a gravação do check-out: nada é creditado', async () => {
+    const g = await signup(ana);
+    const { id } = (await stay(g.id, room, 'OTA', { externalRef: 'DEL-3' })).json();
+    const real = ctx.stays.loadCheckout.bind(ctx.stays);
+    ctx.stays.loadCheckout = async (s) => {
+      const d = await real(s);
+      remove(g.id);
+      return d;
+    };
+    expect((await checkout(id)).statusCode).toBe(409);
+    expect(ctx.stays.balance(g.id)).toBe(0);
+  });
+
+  it('quem indicou e foi excluído não recebe o bônus de indicação', async () => {
+    const a = await signup(ana);
+    const b = await signup({ ...bia, referralCode: a.referralCode });
+    remove(a.id);
+    await complete(b.id, room, 'OTA');
+    expect(ctx.stays.balance(a.id)).toBe(0);
+    expect(ctx.stays.balance(b.id)).toBeGreaterThan(0);
   });
 });
 
