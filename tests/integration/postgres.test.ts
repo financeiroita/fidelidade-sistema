@@ -1,7 +1,7 @@
 // Testes contra um PostgreSQL de verdade: travas de linha, restrições do banco, erros P2002,
 // SQL cru do Prisma e concorrência. Os testes em memória não conseguem provar nada disso.
 import { PrismaClient } from '@prisma/client';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
 import { buildApp } from '../../src/api/app';
 import { createOperator } from '../../src/application/auth';
 import { runNightly } from '../../src/application/maintenance';
@@ -78,7 +78,7 @@ const newReward = async (pointsCost: number) => {
 };
 
 beforeAll(async () => {
-  prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+  prisma = new PrismaClient({ datasources: { db: { url: inject('databaseUrl') } } });
   for (const t of loyaltyConfig.tiers) {
     await prisma.tier.upsert({
       where: { rank: t.rank },
@@ -119,12 +119,31 @@ describe('banco e restrições', () => {
     const g = await newGuest();
     await stayDone(g.id, 1000);
     const lot = await prisma.pointsTransaction.findFirstOrThrow({ where: { guestId: g.id, remaining: { gt: 0 } } });
-    await expect(
-      prisma.$executeRawUnsafe(`UPDATE "PointsTransaction" SET "remaining" = -1 WHERE id = '${lot.id}'`),
-    ).rejects.toThrow();
-    await expect(
-      prisma.$executeRawUnsafe(`UPDATE "PointsTransaction" SET "remaining" = "points" + 1 WHERE id = '${lot.id}'`),
-    ).rejects.toThrow();
+    const reward = await newReward(500);
+    const red = (await post('/redemptions', { guestId: g.id, rewardId: reward.id, requestId: 'req-restricoes-1' })).json();
+    const violates = async (name: string, run: () => Promise<unknown>) => {
+      const err = await run().then(
+        () => null,
+        (e: Error) => e,
+      );
+      expect(err, `a restrição ${name} deveria recusar`).not.toBeNull();
+      expect(String(err!.message)).toContain(name); // recusou pela restrição certa, não por outro erro de SQL
+    };
+    await violates('PointsTransaction_remaining_nonneg', () =>
+      prisma.$executeRaw`UPDATE "PointsTransaction" SET "remaining" = -1 WHERE id = ${lot.id}`,
+    );
+    await violates('PointsTransaction_remaining_le_points', () =>
+      prisma.$executeRaw`UPDATE "PointsTransaction" SET "remaining" = "points" + 1 WHERE id = ${lot.id}`,
+    );
+    await violates('Redemption_points_positive', () =>
+      prisma.$executeRaw`UPDATE "Redemption" SET "points" = 0 WHERE id = ${red.id}`,
+    );
+    await violates('RedemptionLot_points_positive', () =>
+      prisma.$executeRaw`UPDATE "RedemptionLot" SET "points" = 0 WHERE "redemptionId" = ${red.id}`,
+    );
+    await violates('Guest_welcome_nonneg', () =>
+      prisma.$executeRaw`UPDATE "Guest" SET "welcomeBonusPending" = -1 WHERE id = ${g.id}`,
+    );
   });
 
   it('CPF repetido é recusado pelo índice único (P2002), inclusive em cadastros simultâneos', async () => {
@@ -187,7 +206,9 @@ describe('resgates e concorrência', () => {
     const reward = await newReward(800);
     const body = { guestId: g.id, rewardId: reward.id, requestId: 'req-mesmo-pedido' };
     const rs = await Promise.all([post('/redemptions', body), post('/redemptions', body), post('/redemptions', body)]);
-    expect(rs.every((r) => r.statusCode === 201 || r.statusCode === 200)).toBe(true);
+    expect(rs.filter((r) => r.statusCode === 201)).toHaveLength(1);
+    expect(rs.filter((r) => r.statusCode === 200)).toHaveLength(2);
+    expect(new Set(rs.map((r) => r.json().id)).size).toBe(1);
     expect(await prisma.redemption.count()).toBe(1);
     expect(await ledger(g.id)).toBe(4200);
   });
@@ -198,7 +219,10 @@ describe('resgates e concorrência', () => {
     const reward = await newReward(800);
     const r = (await post('/redemptions', { guestId: g.id, rewardId: reward.id, requestId: 'req-cancelar-1' })).json();
     const rs = await Promise.all([post(`/redemptions/${r.id}/cancel`), post(`/redemptions/${r.id}/cancel`)]);
-    expect(rs.some((x) => x.statusCode === 200)).toBe(true);
+    expect(rs.filter((x) => x.statusCode === 200).length).toBeGreaterThanOrEqual(1);
+    expect(rs.every((x) => [200, 409].includes(x.statusCode))).toBe(true);
+    expect((await prisma.redemption.findUniqueOrThrow({ where: { id: r.id } })).status).toBe('CANCELLED');
+    expect(await prisma.pointsTransaction.count({ where: { guestId: g.id, idempotencyKey: `redeem-cancel:${r.id}` } })).toBeLessThanOrEqual(1);
     expect(await ledger(g.id)).toBe(1000);
     expect(await lotsLeft(g.id)).toBe(1000);
   });
@@ -254,9 +278,13 @@ describe('rotina noturna', () => {
       post('/redemptions', { guestId: g.id, rewardId: reward.id, requestId: 'req-durante-noite' }),
     ]);
     expect(night.errors).toBe(0);
+    // Dois desfechos legítimos: o resgate venceu a corrida (201, sobram 200 que a rotina vence depois)
+    // ou a rotina venceu (recusado, saldo 0). Nunca saldo fantasma nem lote vencido com pontos.
     expect([201, 409, 422]).toContain(red.statusCode);
-    expect(await ledger(g.id)).toBe(await lotsLeft(g.id));
-    expect(await ledger(g.id)).toBeGreaterThanOrEqual(0);
+    await runNightly({ repo, now: () => clock });
+    expect(await ledger(g.id)).toBe(0);
+    expect(await lotsLeft(g.id)).toBe(0);
+    expect(await prisma.pointsTransaction.count({ where: { guestId: g.id, type: 'REDEEM' } })).toBe(red.statusCode === 201 ? 1 : 0);
   });
 });
 
@@ -284,10 +312,12 @@ describe('login e funcionários', () => {
     const ids = Object.fromEntries((await prisma.operator.findMany()).map((o) => [o.username, o.id]));
     for (let round = 0; round < 3; round++) {
       await prisma.operator.updateMany({ where: { role: 'ADMIN' }, data: { active: true } });
-      await Promise.all([
+      const rs = await Promise.all([
         app.inject({ method: 'POST', url: `/operators/${ids.admin2}/deactivate`, headers: h1 }),
         app.inject({ method: 'POST', url: `/operators/${ids.admin1}/deactivate`, headers: h2 }),
       ]);
+      // Com 2 administradores, os dois pedidos juntos nunca podem ter sucesso (deixaria 0 ativos).
+      expect(rs.filter((r) => r.statusCode === 204).length).toBeLessThanOrEqual(1);
       expect(await prisma.operator.count({ where: { role: 'ADMIN', active: true } })).toBeGreaterThanOrEqual(1);
     }
   });
@@ -299,6 +329,7 @@ describe('login e funcionários', () => {
     const logs = JSON.stringify(await prisma.auditLog.findMany());
     expect(logs).not.toContain('ana@exemplo.com');
     expect(logs).not.toContain('52998224725');
+    expect(logs).not.toContain('529.982.247-25');
     expect(logs).not.toContain('529.982');
     expect(logs).not.toContain('Ana Souza');
   });

@@ -1,6 +1,5 @@
 -- Restrições de integridade que o Prisma não declara no schema.
--- Aplicar UMA vez depois da primeira migração (e ao recriar o banco):
---   psql "$DATABASE_URL" -f prisma/constraints.sql
+-- Aplicadas automaticamente por `prisma migrate`, depois da migração init.
 -- Servem de rede de segurança: se um bug tentar gravar saldo incoerente, o banco recusa.
 
 ALTER TABLE "PointsTransaction"
