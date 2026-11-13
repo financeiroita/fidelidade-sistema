@@ -21,7 +21,9 @@ _Feita em 2026-11-13 sobre o repositório público https://github.com/Itamambuca
   - não há testes.
 - **Recomendação:** não reaproveitar o código PHP. Trazer para o nosso sistema, aos poucos, as **ideias** boas dele (check-in por QR de uso único, recreação, informações, catálogo de atividades) e desligar o app PHP.
 
-## Urgente (se o app PHP estiver no ar)
+## Falhas graves (o app não pode ir ao ar assim)
+_Nota de 2026-11-13: o hotel informou que o app PHP **não está em uso**. As falhas abaixo não afetam hóspedes hoje, mas impedem publicá-lo como está. Recomendação: não colocá-lo no ar e deixar o repositório privado (ou arquivado), porque o código público mostra como explorar as falhas se alguém um dia subir uma cópia._
+
 Confirmado no código.
 
 | # | Problema | Onde | O que fazer já |
@@ -92,9 +94,9 @@ Confirmado no código.
 - **CPF:** o PHP não pede; o nosso exige (ADR 0005). Quem já está cadastrado no PHP precisaria informar o CPF ao migrar.
 
 ## Caminho sugerido
-1. **Hoje:** fechar U1 a U8 no servidor do app PHP, ou tirá-lo do ar se não estiver em uso pelos hóspedes.
+1. **Já:** manter o app PHP fora do ar (ele não está em uso) e deixar o repositório privado ou arquivado. Se ainda houver uma cópia num servidor, apagá-la.
 2. **Decidir** as perguntas 53 a 57.
-3. **Migrar** os hóspedes do app PHP:
+3. **Migrar** os hóspedes do app PHP, se houver cadastros reais nele:
    - nome, e-mail e telefone; o CPF é pedido no primeiro acesso;
    - saldo de pontos convertido num lançamento de ajuste com validade (regra a decidir, pergunta 57), depois de limpar os pontos obtidos por falha.
 4. **Trazer as funcionalidades,** cada uma com ADR e testes:

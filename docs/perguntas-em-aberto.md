@@ -64,7 +64,7 @@ Decisões que dependem do hotel (diretoria, marketing, jurídico, recepção). E
 | 54 | Bônus de boas-vindas para todo cadastro (o app PHP dava 100 pontos) ou só para indicados (500, como hoje)? | análise do app PHP | Só para indicados, após o 1º check-out | Custo e incentivo ao cadastro |
 | 55 | Check-in em atividades por QR de uso único deve dar pontos de bônus? Quanto, com que teto por dia, e só durante a estadia? Missões e selos interessam? | análise do app PHP | Não existe | Engajamento durante a estadia |
 | 56 | Ranking de hóspedes: ter ou não? Se sim, só com primeiro nome e inicial e opção de sair? | análise do app PHP | Não existe | Gamificação x privacidade (LGPD) |
-| 57 | Como migrar os hóspedes e saldos do app PHP (conversão dos pontos, validade, limpeza de pontos obtidos por falha, CPF no primeiro acesso)? | análise do app PHP | Nada migrado | Continuidade para quem já usa o app |
+| 57 | O app PHP (fora de uso) tem cadastros reais? Se sim, como migrar os hóspedes e saldos (conversão dos pontos, validade, limpeza de pontos obtidos por falha, CPF no primeiro acesso)? | análise do app PHP | Nada migrado | Continuidade para quem já usa o app |
 
 ## Respondidas
 - Stack: TypeScript + PostgreSQL (ADR 0002). Estadias via PMS e manual. Resort de lazer único. PMS Erbon com folio por categoria. Diária média R$ 700. Todos os hóspedes cadastrados entram, inclusive OTA (ADR 0004).
