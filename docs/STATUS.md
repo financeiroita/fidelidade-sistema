@@ -26,6 +26,7 @@ _Atualizado: 2026-11-12_
 - Adaptador do Erbon (levantar a API primeiro).
 - CORS restrito ao site do hotel, HTTPS e proteção contra robôs no cadastro.
 - Validar no PostgreSQL 16 do `docker-compose.yml` (os testes rodam no 18).
+- Teste de integração: às vezes o Vitest avisa "something prevents Vite server from exiting" e deixa um processo filho (`io_worker`) do PostgreSQL embutido para trás (visto em 2026-11-13). Não afeta os resultados nem a porta (ela é sorteada), mas vale melhorar o encerramento em `tests/integration/globalSetup.ts`. Se acontecer, encerre o `postgres.exe` da pasta `node_modules` do projeto.
 - Regra de day use quando as estadias vierem do Erbon (ADR 0012).
 - Limite de requisições e restrição por rede nas rotas internas (ADR 0007); limite por IP agrupando IPv6 por `/64`; tempo limite de transação respondendo 503 (ADR 0016).
 - Lista grande de senhas vazadas na criação de senha de funcionário (ADR 0010).
