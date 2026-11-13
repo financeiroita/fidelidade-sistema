@@ -60,6 +60,11 @@ Decisões que dependem do hotel (diretoria, marketing, jurídico, recepção). E
 | 50 | Casal ou família em que mais de um é membro: a mesma conta pode pontuar para os dois? | 0016 | Tecnicamente sim, se cada lançamento tiver um número de reserva diferente (ou nenhum): a checagem de período sobreposto vale só para o mesmo hóspede; o mesmo número de reserva nunca é aceito duas vezes | Pontos em dobro pela mesma despesa |
 | 51 | Qual o contato do hotel para pedidos da LGPD (acesso, correção, exclusão)? | 0013, ligada à 20 | A "Minha conta" diz "fale com a recepção do hotel" | Canal do titular exigido pela LGPD |
 | 52 | Código de indicação: hoje é parte do nome + 4 caracteres, fácil de adivinhar. Alongar o código ou limitar o uso? | 0006, ligada à 28 | Código curto; as boas-vindas só são pagas após o 1º check-out | Uso do código de um hóspede por quem ele não indicou |
+| 53 | O app do hóspede deve ser também o guia do resort (catálogo de atividades, busca, favoritos, informações), como no app PHP inicial? | análise do app PHP | Só pontos, nível, extrato e prêmios na "Minha conta" | Escopo do app |
+| 54 | Bônus de boas-vindas para todo cadastro (o app PHP dava 100 pontos) ou só para indicados (500, como hoje)? | análise do app PHP | Só para indicados, após o 1º check-out | Custo e incentivo ao cadastro |
+| 55 | Check-in em atividades por QR de uso único deve dar pontos de bônus? Quanto, com que teto por dia, e só durante a estadia? Missões e selos interessam? | análise do app PHP | Não existe | Engajamento durante a estadia |
+| 56 | Ranking de hóspedes: ter ou não? Se sim, só com primeiro nome e inicial e opção de sair? | análise do app PHP | Não existe | Gamificação x privacidade (LGPD) |
+| 57 | Como migrar os hóspedes e saldos do app PHP (conversão dos pontos, validade, limpeza de pontos obtidos por falha, CPF no primeiro acesso)? | análise do app PHP | Nada migrado | Continuidade para quem já usa o app |
 
 ## Respondidas
 - Stack: TypeScript + PostgreSQL (ADR 0002). Estadias via PMS e manual. Resort de lazer único. PMS Erbon com folio por categoria. Diária média R$ 700. Todos os hóspedes cadastrados entram, inclusive OTA (ADR 0004).

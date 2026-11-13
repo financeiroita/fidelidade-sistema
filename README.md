@@ -15,6 +15,7 @@ Estado atual (2026-11-12): o núcleo do programa funciona e está testado, inclu
 | `docs/agents/` | Papéis de agentes verificadores/auditores |
 | `docs/comunicacao/` | Textos e páginas para hóspedes (rascunhos) |
 | `docs/pesquisa-programas-de-resorts.md` | Pesquisa de mercado e ideias a implementar |
+| `docs/analise-app-php-inicial.md` | Análise do app PHP inicial e sugestões |
 | `web/` | Página "Minha conta" do hóspede, servida pela API em `/minha-conta` |
 | `.claude/agents/` | Subagentes do Claude Code |
 
