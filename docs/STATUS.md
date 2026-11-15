@@ -13,6 +13,8 @@ _Atualizado: 2026-11-12_
 - Correções da revisão geral de 2026-11-12 e da auditoria seguinte (ver ADRs 0011 e 0012).
 - Segunda revisão geral (ADR 0016): pontos valem até o fim do dia do hotel, número da reserva sem diferença de maiúsculas, regra única para nível vencido, `.env` carregado pelo próprio sistema e mais travas de integridade no banco. A auditoria seguinte (ADR 0017) estendeu o fim do dia à validade do nível e fechou uma brecha no limite do proxy.
 
+- Publicado no GitHub, em repositório **privado**: https://github.com/financeiroita/fidelidade-sistema (2026-11-15). Mudar para a organização Itamambuca-Eco-Resort é uma pendência de quem administra a organização.
+
 ## Pendente técnico
 - Ligar um serviço de e-mail de verdade para o código de acesso da "Minha conta" (depende da pergunta 29).
 - Ligar o formulário de cadastro (`docs/comunicacao/cadastro-hospede.html`) à API; hoje ele é só demonstração.
@@ -33,13 +35,12 @@ _Atualizado: 2026-11-12_
 - Chave estrangeira em `Redemption.stayId` e preenchimento de `PointsTransaction.createdBy` (ADR 0016).
 - Sem teste automatizado: `web/minha-conta.js`, a calculadora de `programa-fidelidade.html` e os scripts `operator:create`/`operator:unlock`.
 - Antes de publicar as páginas de `docs/comunicacao/`: torná-las páginas completas e tirar as fontes do Google.
-- Publicar no GitHub (`gh auth login`).
 
 ## Proposto, aguardando o hotel
 - Instagram: pontos por marcação do hotel em post, reels ou story, com vínculo da conta e aprovação do marketing (ADR 0015, perguntas 34 a 40). Seguir e curtir não podem pontuar.
 - Ideias da pesquisa de programas de resorts (`docs/pesquisa-programas-de-resorts.md`, perguntas 41 a 48): diária grátis por marco de noites, pontos pagando parte da conta, vencimento por inatividade, janela de nível maior, dias do membro, experiências locais, benefício à escolha e tarifa de membro.
 
-- App PHP inicial (repositório da organização no GitHub): não está em uso; tem falhas graves e não deve ir ao ar como está. Plano para trazer as funções úteis das funções úteis (`docs/analise-app-php-inicial.md`, perguntas 53 a 57).
+- App PHP inicial (repositório da organização no GitHub): não está em uso; tem falhas graves e não deve ir ao ar como está. Plano para trazer as ideias úteis dele (`docs/analise-app-php-inicial.md`, perguntas 53 a 57).
 
 ## Pendente do hotel
 Todas as decisões que dependem do hotel estão em `docs/perguntas-em-aberto.md`.

@@ -1,6 +1,7 @@
 # Fidelidade
 
 CRM e programa de fidelidade do resort Itamambuca: cadastra hóspedes (com CPF protegido), credita pontos no check-out, controla níveis, vencimento e resgate de pontos, com login por funcionário e registro de auditoria.
+Repositório (privado): https://github.com/financeiroita/fidelidade-sistema
 Estado atual (2026-11-12): o núcleo do programa funciona e está testado, inclusive em PostgreSQL de verdade; ainda falta integrar com o Erbon, enviar os avisos e outras pendências listadas em `docs/STATUS.md`. Decisões em `docs/decisions/`.
 
 ## Estrutura
